@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hauptmenü</title>
+  <style>
+    body {
+      background: #111;
+      color: #eee;
+      font-family: "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 40px;
+      color: #00c896;
+    }
+
+    .menu {
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    .menu-item {
+      background-color: #1f1f1f;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 20px;
+      transition: transform 0.2s, border-color 0.3s;
+    }
+
+    .menu-item:hover {
+      transform: translateY(-2px);
+      border-color: #00c896;
+    }
+
+    .menu-title {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+      color: #00c896;
+    }
+
+    .menu-desc {
+      font-size: 1rem;
+      color: #aaa;
+      margin-bottom: 15px;
+    }
+
+    .menu-link {
+      background-color: #00c896;
+      color: #000;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-weight: bold;
+      text-decoration: none;
+      transition: background-color 0.2s;
+      display: inline-block;
+    }
+
+    .menu-link:hover {
+      background-color: #00e6ae;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧭 Hauptmenü</h1>
+
+  <div class="menu">
+    <!-- Beispielmenüpunkte -->
+    <div class="menu-item">
+      <div class="menu-title">Polytrack Profilseite</div>
+      <div class="menu-desc">Erstelle und verwalte deine Profile für Polytrack inklusive Bilder und Code.</div>
+      <a class="menu-link" href="polytrack.html">Öffnen</a>
+    </div>
+
+    <div class="menu-item">
+      <div class="menu-title">Zukunftiges Sandbox-Spiel</div>
+      <div class="menu-desc">Ideensammlung und Konzepte für dein zukünftiges Spiel mit Inventar und Seasons.</div>
+      <a class="menu-link" href="sandbox_idee.html">Öffnen</a>
+    </div>
+
+    <!-- HIER WEITERE MENÜPUNKTE HINZUFÜGEN -->
+    <!--
+    <div class="menu-item">
+      <div class="menu-title">Titel hier</div>
+      <div class="menu-desc">Beschreibung hier.</div>
+      <a class="menu-link" href="dateiname.html">Öffnen</a>
+    </div>
+    -->
+  </div>
+</body>
+</html>
