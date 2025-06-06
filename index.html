@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Polytrack Profile</title>
+  <style>
+    :root {
+      --bg: #1a1a1a;
+      --fg: #eeeeee;
+      --accent: #00c896;
+      --border: #333;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background-color: var(--bg);
+      color: var(--fg);
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      color: var(--accent);
+      margin-bottom: 20px;
+    }
+
+    label {
+      margin-top: 15px;
+      display: block;
+    }
+
+    input, textarea, button, select {
+      background-color: #262626;
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 5px;
+      width: 100%;
+      max-width: 400px;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    button {
+      cursor: pointer;
+      background-color: var(--accent);
+      color: #000;
+      font-weight: bold;
+      transition: background-color 0.2s;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      background-color: #00e6ae;
+    }
+
+    .drop-zone {
+      border: 2px dashed var(--border);
+      padding: 20px;
+      margin-top: 10px;
+      text-align: center;
+      color: #aaa;
+      background-color: #222;
+      border-radius: 8px;
+      transition: border-color 0.2s;
+    }
+
+    .drop-zone:hover {
+      border-color: var(--accent);
+      color: var(--fg);
+    }
+
+    img {
+      max-width: 200px;
+      margin-top: 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 8px #000;
+    }
+
+    .profile {
+      margin-top: 30px;
+      text-align: center;
+    }
+
+    .profile img {
+      max-width: 300px;
+    }
+
+    .copy-button, .delete-button, .export-button, .import-button {
+      margin-top: 10px;
+      width: 100%;
+      max-width: 200px;
+    }
+
+    hr {
+      margin: 40px 0;
+      border: none;
+      border-top: 1px solid #444;
+      width: 100%;
+      max-width: 600px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Polytrack Profil-Generator</h1>
+
+  <label for="profileName">Profilname</label>
+  <input type="text" id="profileName" placeholder="z. B. DriftKing">
+
+  <label for="profileCode">Code</label>
+  <textarea id="profileCode" placeholder="Füge hier deinen Code ein..."></textarea>
+
+  <div class="drop-zone" id="dropZone">📁 Bild hierher ziehen oder klicken zum Hochladen</div>
+  <input type="file" id="fileInput" accept="image/*" style="display: none;">
+  <img id="previewImage" style="display: none;" />
+
+  <button onclick="createProfile()">Profil erstellen</button>
+
+  <hr>
+
+  <label for="profileSelect">Gespeicherte Profile</label>
+  <select id="profileSelect" onchange="loadProfile()">
+    <option value="">-- Bitte wählen --</option>
+  </select>
+
+  <div class="profile" id="profileDisplay" style="display: none;">
+    <h2 id="displayName"></h2>
+    <img id="displayImage">
+    <button class="copy-button" onclick="copyCode()">📋 Code kopieren</button>
+    <button class="delete-button" onclick="deleteProfile()">🗑 Profil löschen</button>
+  </div>
+
+  <hr>
+
+  <button class="export-button" onclick="exportProfiles()">📤 Profile exportieren</button>
+  <input type="file" id="importInput" accept=".json" style="display: none;">
+  <button class="import-button" onclick="document.getElementById('importInput').click()">📥 Profile importieren</button>
+
+  <script>
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const previewImage = document.getElementById("previewImage");
+
+    let imageData = "";
+
+    dropZone.addEventListener("click", () => fileInput.click());
+
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = "#00e6ae";
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.style.borderColor = "#333";
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      handleImage(file);
+    });
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      handleImage(file);
+    });
+
+    function handleImage(file) {
+      if (!file.type.startsWith("image/")) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        imageData = reader.result;
+        previewImage.src = imageData;
+        previewImage.style.display = "block";
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function createProfile() {
+      const name = document.getElementById("profileName").value.trim();
+      const code = document.getElementById("profileCode").value.trim();
+      if (!name || !code || !imageData) {
+        alert("Bitte fülle alle Felder aus und lade ein Bild hoch.");
+        return;
+      }
+
+      const profiles = JSON.parse(localStorage.getItem("polyProfiles") || "{}");
+      profiles[name] = { code, imageData };
+      localStorage.setItem("polyProfiles", JSON.stringify(profiles));
+
+      updateProfileList();
+      alert("Profil gespeichert!");
+    }
+
+    function updateProfileList() {
+      const select = document.getElementById("profileSelect");
+      select.innerHTML = '<option value="">-- Bitte wählen --</option>';
+
+      const profiles = JSON.parse(localStorage.getItem("polyProfiles") || "{}");
+      for (const name in profiles) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+      }
+    }
+
+    function loadProfile() {
+      const selected = document.getElementById("profileSelect").value;
+      const profiles = JSON.parse(localStorage.getItem("polyProfiles") || "{}");
+
+      if (!selected || !profiles[selected]) return;
+
+      const profile = profiles[selected];
+      document.getElementById("displayName").textContent = selected;
+      document.getElementById("displayImage").src = profile.imageData;
+      document.getElementById("profileDisplay").style.display = "block";
+      document.getElementById("profileDisplay").dataset.code = profile.code;
+      document.getElementById("profileDisplay").dataset.name = selected;
+    }
+
+    function copyCode() {
+      const code = document.getElementById("profileDisplay").dataset.code;
+      navigator.clipboard.writeText(code).then(() => {
+        alert("Code kopiert!");
+      });
+    }
+
+    function deleteProfile() {
+      const name = document.getElementById("profileDisplay").dataset.name;
+      if (!name) return;
+
+      if (confirm(`Profil "${name}" wirklich löschen?`)) {
+        const profiles = JSON.parse(localStorage.getItem("polyProfiles") || "{}");
+        delete profiles[name];
+        localStorage.setItem("polyProfiles", JSON.stringify(profiles));
+        updateProfileList();
+        document.getElementById("profileDisplay").style.display = "none";
+        alert("Profil gelöscht.");
+      }
+    }
+
+    function exportProfiles() {
+      const data = localStorage.getItem("polyProfiles");
+      if (!data) return alert("Keine Profile vorhanden.");
+
+      const blob = new Blob([data], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "polytrack_profiles.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("importInput").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const imported = JSON.parse(reader.result);
+          const current = JSON.parse(localStorage.getItem("polyProfiles") || "{}");
+          const merged = { ...current, ...imported };
+          localStorage.setItem("polyProfiles", JSON.stringify(merged));
+          updateProfileList();
+          alert("Import erfolgreich!");
+        } catch (err) {
+          alert("Fehler beim Import.");
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    updateProfileList();
+  </script>
+</body>
+</html>
