@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RetroGadgets – Blockly → Lua</title>
+  <style>
+    html, body { height: 100%; margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    .app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+    header { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    header .spacer { flex: 1; }
+    header button { padding: 8px 12px; border: 1px solid #e5e7eb; background: #fff; border-radius: 12px; cursor: pointer; }
+    header button:hover { background: #f8fafc; }
+    .content { display: grid; grid-template-columns: 1fr 420px; gap: 12px; height: calc(100vh - 58px); padding: 12px; box-sizing: border-box; }
+    #blocklyDiv { width: 100%; height: 100%; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+    .side { display: grid; grid-template-rows: auto 1fr; gap: 8px; }
+    .panel { border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
+    .panel h2 { margin: 0; padding: 10px 12px; font-size: 13px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+    .panel pre { margin: 0; padding: 12px; overflow: auto; font-size: 12px; }
+    textarea { width: 100%; height: 100%; box-sizing: border-box; border: 0; resize: none; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
+    .footer { padding: 8px 12px; display: flex; gap: 8px; border-top: 1px solid #e5e7eb; }
+    .badge { font-size: 11px; background: #eef2ff; color: #3730a3; padding: 2px 6px; border-radius: 8px; }
+  </style>
+  <!-- Blockly core + Lua generator (pinned version for stability) -->
+  <script src="https://unpkg.com/blockly@9.4.3/blockly.min.js"></script>
+  <script src="https://unpkg.com/blockly@9.4.3/lua.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>RetroGadgets – Blockly → Lua <span class="badge">local-first</span></h1>
+      <div class="spacer"></div>
+      <button id="btn-generate" title="Lua-Code aus den Blöcken erzeugen">Code erzeugen</button>
+      <button id="btn-copy" title="Lua-Code in die Zwischenablage kopieren">Kopieren</button>
+      <button id="btn-download" title="Lua-Code als Datei speichern">Als .lua speichern</button>
+      <button id="btn-clear" title="Workspace leeren">Workspace leeren</button>
+    </header>
+
+    <div class="content">
+      <div id="blocklyDiv"></div>
+
+      <div class="side">
+        <div class="panel">
+          <h2>Lua-Code (kopierfertig für RetroGadgets)</h2>
+          <textarea id="luaOut" spellcheck="false"></textarea>
+          <div class="footer">
+            <small>Tipp: Code hier bearbeiten ist möglich – Änderungen werden nicht zurück in Blöcke synchronisiert.</small>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Hinweise</h2>
+          <pre>
+• Die Toolbox links enthält Basisblöcke plus RetroGadgets-Blocks (Demo).
+• Export erzeugt Lua-5.1-kompatiblen Code.
+• Autosave: Workspace wird im Browser gespeichert.
+• Passe die Custom-Blöcke an deine RG-API an.
+          </pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolbox: Basis + RetroGadgets-Demoblöcke -->
+  <xml id="toolbox" style="display:none">
+    <category name="Logik" categorystyle="logic_category"></category>
+    <category name="Schleifen" categorystyle="loop_category"></category>
+    <category name="Mathe" categorystyle="math_category"></category>
+    <category name="Text" categorystyle="text_category"></category>
+    <category name="Variablen" categorystyle="variable_category"></category>
+    <category name="Funktionen" categorystyle="procedure_category"></category>
+    <sep></sep>
+    <category name="RetroGadgets" colour="#7c3aed">
+      <block type="rg_clear"></block>
+      <block type="rg_set_pixel">
+        <value name="X"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="Y"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="C"><shadow type="text"><field name="TEXT">red</field></shadow></value>
+      </block>
+      <block type="rg_draw_text">
+        <value name="X"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="Y"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="TXT"><shadow type="text"><field name="TEXT">Hallo</field></shadow></value>
+      </block>
+      <block type="rg_button_pressed">
+        <value name="BTN"><shadow type="text"><field name="TEXT">A</field></shadow></value>
+      </block>
+      <block type="rg_update_loop"></block>
+    </category>
+  </xml>
+
+  <script>
+    // ---- Workspace ----
+    const workspace = Blockly.inject('blocklyDiv', {
+      toolbox: document.getElementById('toolbox'),
+      renderer: 'zelos',
+      grid: { spacing: 20, length: 3, colour: '#eee', snap: true },
+      zoom: { controls: true, wheel: true },
+      trashcan: true,
+      move: { scrollbars: true, drag: true, wheel: true }
+    });
+
+    // ---- Autosave / Restore ----
+    const LS_KEY = 'rg_blockly_ws_v1';
+    function saveWorkspace() {
+      const xml = Blockly.Xml.workspaceToDom(workspace);
+      localStorage.setItem(LS_KEY, Blockly.Xml.domToText(xml));
+    }
+    function restoreWorkspace() {
+      const text = localStorage.getItem(LS_KEY);
+      if (text) {
+        try {
+          const xml = Blockly.Xml.textToDom(text);
+          Blockly.Xml.domToWorkspace(xml, workspace);
+        } catch (e) {
+          console.warn('Restore failed', e);
+        }
+      }
+    }
+    workspace.addChangeListener(() => {
+      saveWorkspace();
+      generateLua();
+    });
+
+    // ---- Custom Blocks (Demo) ----
+    Blockly.defineBlocksWithJsonArray([
+      {
+        "type": "rg_clear",
+        "message0": "rg.clear()",
+        "output": null,
+        "previousStatement": null,
+        "nextStatement": null,
+        "colour": 287,
+        "tooltip": "Bildschirm löschen",
+        "helpUrl": ""
+      },
+      {
+        "type": "rg_set_pixel",
+        "message0": "rg.setPixel x %1 y %2 farbe %3",
+        "args0": [
+          { "type": "input_value", "name": "X", "check": "Number" },
+          { "type": "input_value", "name": "Y", "check": "Number" },
+          { "type": "input_value", "name": "C" }
+        ],
+        "previousStatement": null,
+        "nextStatement": null,
+        "colour": 287,
+        "tooltip": "Setzt einen Pixel an (x,y)",
+        "helpUrl": ""
+      },
+      {
+        "type": "rg_draw_text",
+        "message0": "rg.drawText x %1 y %2 text %3",
+        "args0": [
+          { "type": "input_value", "name": "X", "check": "Number" },
+          { "type": "input_value", "name": "Y", "check": "Number" },
+          { "type": "input_value", "name": "TXT" }
+        ],
+        "previousStatement": null,
+        "nextStatement": null,
+        "colour": 287,
+        "tooltip": "Zeichnet Text auf den Bildschirm",
+        "helpUrl": ""
+      },
+      {
+        "type": "rg_button_pressed",
+        "message0": "rg.buttonPressed name %1",
+        "args0": [ { "type": "input_value", "name": "BTN" } ],
+        "output": "Boolean",
+        "colour": 287,
+        "tooltip": "Prüft, ob eine Taste gedrückt ist",
+        "helpUrl": ""
+      },
+      {
+        "type": "rg_update_loop",
+        "message0": "update() %1 %2",
+        "args0": [
+          { "type": "input_dummy" },
+          { "type": "input_statement", "name": "BODY" }
+        ],
+        "colour": 208,
+        "tooltip": "Update-Schleife (wird jedes Frame aufgerufen)",
+        "helpUrl": ""
+      }
+    ]);
+
+    // ---- Lua Generators for custom blocks ----
+    Blockly.Lua.addReservedWords('rg');
+
+    Blockly.Lua['rg_clear'] = function(block) {
+      return 'rg.clear()\n';
+    };
+
+    Blockly.Lua['rg_set_pixel'] = function(block) {
+      const x = Blockly.Lua.valueToCode(block, 'X', Blockly.Lua.ORDER_NONE) || '0';
+      const y = Blockly.Lua.valueToCode(block, 'Y', Blockly.Lua.ORDER_NONE) || '0';
+      const c = Blockly.Lua.valueToCode(block, 'C', Blockly.Lua.ORDER_NONE) || '"white"';
+      return `rg.setPixel(${x}, ${y}, ${c})\n`;
+    };
+
+    Blockly.Lua['rg_draw_text'] = function(block) {
+      const x = Blockly.Lua.valueToCode(block, 'X', Blockly.Lua.ORDER_NONE) || '0';
+      const y = Blockly.Lua.valueToCode(block, 'Y', Blockly.Lua.ORDER_NONE) || '0';
+      const t = Blockly.Lua.valueToCode(block, 'TXT', Blockly.Lua.ORDER_NONE) || '""';
+      return `rg.drawText(${x}, ${y}, ${t})\n`;
+    };
+
+    Blockly.Lua['rg_button_pressed'] = function(block) {
+      const b = Blockly.Lua.valueToCode(block, 'BTN', Blockly.Lua.ORDER_NONE) || '"A"';
+      const code = `rg.buttonPressed(${b})`;
+      return [code, Blockly.Lua.ORDER_HIGH];
+    };
+
+    Blockly.Lua['rg_update_loop'] = function(block) {
+      const body = Blockly.Lua.statementToCode(block, 'BODY');
+      return `function update()\n${body}end\n`;
+    };
+
+    // ---- Generate Lua ----
+    function generateLua() {
+      const code = Blockly.Lua.workspaceToCode(workspace);
+      const header = `--[[\n  Generated by RetroGadgets Blockly → Lua\n  Passe die Funktionsnamen an deine RG-API an (rg.*).\n]]\n\n`;
+      document.getElementById('luaOut').value = header + code;
+      return header + code;
+    }
+
+    // ---- Buttons ----
+    document.getElementById('btn-generate').addEventListener('click', generateLua);
+
+    document.getElementById('btn-copy').addEventListener('click', async () => {
+      const txt = document.getElementById('luaOut').value;
+      try { await navigator.clipboard.writeText(txt); alert('Lua-Code kopiert.'); }
+      catch { /* fallback */ const ta = document.getElementById('luaOut'); ta.select(); document.execCommand('copy'); alert('Lua-Code kopiert.'); }
+    });
+
+    document.getElementById('btn-download').addEventListener('click', () => {
+      const blob = new Blob([document.getElementById('luaOut').value], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'script.lua';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      workspace.clear();
+      localStorage.removeItem(LS_KEY);
+      generateLua();
+    });
+
+    // ---- Example seed program (optional) ----
+    function seedExample() {
+      const xmlText = `
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <block type="rg_update_loop" x="20" y="20">
+    <statement name="BODY">
+      <block type="controls_if">
+        <value name="IF0">
+          <block type="rg_button_pressed">
+            <value name="BTN"><block type="text"><field name="TEXT">A</field></block></value>
+          </block>
+        </value>
+        <statement name="DO0">
+          <block type="rg_set_pixel">
+            <value name="X"><block type="math_number"><field name="NUM">1</field></block></value>
+            <value name="Y"><block type="math_number"><field name="NUM">1</field></block></value>
+            <value name="C"><block type="text"><field name="TEXT">red</field></block></value>
+          </block>
+        </statement>
+        <else>
+          <block type="rg_clear"></block>
+        </else>
+      </block>
+    </statement>
+  </block>
+</xml>`;
+      const xml = Blockly.utils.xml.textToDom(xmlText);
+      Blockly.Xml.domToWorkspace(xml, workspace);
+    }
+
+    // Init
+    restoreWorkspace();
+    if (!localStorage.getItem(LS_KEY)) seedExample();
+    generateLua();
+  </script>
+</body>
+</html>
