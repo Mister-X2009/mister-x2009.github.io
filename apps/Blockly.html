@@ -1,42 +1,17 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <title>RetroGadgets Blockly</title>
+  <meta charset="UTF-8">
+  <title>RetroGadgets Blockly Modern</title>
   <script src="https://unpkg.com/blockly@12.2.0/blockly.min.js"></script>
+  <script src="retro_blocks.js"></script>
   <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: #1a1a1a;
-      color: #fff;
-      font-family: sans-serif;
-    }
-    #blocklyDiv {
-      height: 80vh;
-      width: 100%;
-    }
-    #controls {
-      padding: 10px;
-      background: #111;
-      display: flex;
-      gap: 10px;
-    }
-    button {
-      background: #00c896;
-      color: #000;
-      border: none;
-      padding: 10px 15px;
-      font-weight: bold;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    pre {
-      background: #000;
-      color: #0f0;
-      padding: 10px;
-      white-space: pre-wrap;
-    }
+    html, body { height: 100%; margin: 0; font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #fff; }
+    #blocklyDiv { height: 75vh; width: 100%; }
+    #controls { display: flex; gap: 10px; padding: 10px; background: linear-gradient(90deg,#111,#222); border-radius: 12px; justify-content: center; }
+    button { border-radius: 8px; background: linear-gradient(90deg,#00c896,#00e6ae); color: #000; font-weight: bold; padding: 10px 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); cursor: pointer; }
+    button:hover { background: linear-gradient(90deg,#00e6ae,#00ffc9); }
+    pre { background: #111; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); padding: 15px; font-family: 'Fira Code', monospace; color: #0f0; max-height: 20vh; overflow-y: auto; margin: 10px; }
   </style>
 </head>
 <body>
@@ -48,92 +23,40 @@
   </div>
   <pre id="code"></pre>
 
-  <xml id="toolbox" style="display:none">
-    <category name="Logik" colour="210">
-      <block type="controls_if"></block>
-      <block type="logic_compare"></block>
-    </category>
-    <category name="Schleifen" colour="120">
-      <block type="controls_repeat_ext"></block>
-    </category>
-    <category name="Mathe" colour="230">
-      <block type="math_number"></block>
-      <block type="math_arithmetic"></block>
-    </category>
-    <category name="Variablen" custom="VARIABLE"></category>
-    <category name="RetroGadgets" colour="60">
-      <block type="rg_clear"></block>
-      <block type="rg_setpixel"></block>
-      <block type="rg_drawtext"></block>
-      <block type="rg_buttonpressed"></block>
-    </category>
-  </xml>
+  <!-- Leere Toolbox, wird per JS gefüllt -->
+  <xml id="toolbox" style="display:none"></xml>
 
   <script>
-    const workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') });
+    const workspace = Blockly.inject('blocklyDiv', {
+      toolbox: document.getElementById('toolbox'),
+      renderer: 'zelos',
+      theme: Blockly.Themes.Dark,
+      grid: { spacing: 20, length: 3, colour: '#555', snap: true },
+      zoom: { controls: true, wheel: true },
+      trashcan: true
+    });
 
-    // Custom Blocks
-    Blockly.defineBlocksWithJsonArray([
-      {
-        "type": "rg_clear",
-        "message0": "Bildschirm löschen",
-        "previousStatement": null,
-        "nextStatement": null,
-        "colour": 60
-      },
-      {
-        "type": "rg_setpixel",
-        "message0": "Pixel bei x %1 y %2 auf Farbe %3 setzen",
-        "args0": [
-          {"type": "input_value", "name": "X", "check": "Number"},
-          {"type": "input_value", "name": "Y", "check": "Number"},
-          {"type": "input_value", "name": "COLOR", "check": "String"}
-        ],
-        "previousStatement": null,
-        "nextStatement": null,
-        "colour": 60
-      },
-      {
-        "type": "rg_drawtext",
-        "message0": "Text %1 bei x %2 y %3 zeichnen",
-        "args0": [
-          {"type": "input_value", "name": "TEXT", "check": "String"},
-          {"type": "input_value", "name": "X", "check": "Number"},
-          {"type": "input_value", "name": "Y", "check": "Number"}
-        ],
-        "previousStatement": null,
-        "nextStatement": null,
-        "colour": 60
-      },
-      {
-        "type": "rg_buttonpressed",
-        "message0": "Taste %1 gedrückt?",
-        "args0": [{"type": "field_input", "name": "BUTTON", "text": "A"}],
-        "output": "Boolean",
-        "colour": 60
-      }
-    ]);
+    // Blöcke und Toolbox Tabs aus externer Datei einfügen
+    addRetroGadgetsBlocks(workspace);
+    const toolbox = document.getElementById('toolbox');
+    retroGadgetsTabs.forEach(tab => {
+      const category = document.createElement('category');
+      category.setAttribute('name', tab.category);
+      category.setAttribute('colour', tab.colour);
+      tab.blocks.forEach(block => {
+        const blockXml = document.createElement('block');
+        blockXml.setAttribute('type', block.type);
+        category.appendChild(blockXml);
+      });
+      toolbox.appendChild(category);
+    });
 
-    // Lua Generator
-    Blockly.Lua['rg_clear'] = function() {
-      return 'rg.clear()\n';
-    };
-    Blockly.Lua['rg_setpixel'] = function(block) {
-      const x = Blockly.Lua.valueToCode(block, 'X', Blockly.Lua.ORDER_NONE) || 0;
-      const y = Blockly.Lua.valueToCode(block, 'Y', Blockly.Lua.ORDER_NONE) || 0;
-      const color = Blockly.Lua.valueToCode(block, 'COLOR', Blockly.Lua.ORDER_NONE) || '"white"';
-      return `rg.setPixel(${x}, ${y}, ${color})\n`;
-    };
-    Blockly.Lua['rg_drawtext'] = function(block) {
-      const text = Blockly.Lua.valueToCode(block, 'TEXT', Blockly.Lua.ORDER_NONE) || '"Text"';
-      const x = Blockly.Lua.valueToCode(block, 'X', Blockly.Lua.ORDER_NONE) || 0;
-      const y = Blockly.Lua.valueToCode(block, 'Y', Blockly.Lua.ORDER_NONE) || 0;
-      return `rg.drawText(${text}, ${x}, ${y})\n`;
-    };
-    Blockly.Lua['rg_buttonpressed'] = function(block) {
-      const button = block.getFieldValue('BUTTON');
-      return [`rg.buttonPressed("${button}")`, Blockly.Lua.ORDER_ATOMIC];
-    };
+    // Lua Generatoren
+    Blockly.Lua['cpu_block'] = function(block) { const id = block.getFieldValue('ID'); return `CPU(${id})\n`; };
+    Blockly.Lua['set_button_light'] = function(block) { const x = block.getFieldValue('X'); const y = block.getFieldValue('Y'); const color = `"${block.getFieldValue('COLOR')}"`; return `rg.setButtonLight(${x},${y},${color})\n`; };
+    Blockly.Lua['button_pressed'] = function(block) { const x = block.getFieldValue('X'); const y = block.getFieldValue('Y'); return [`rg.buttonPressed(${x},${y})`, Blockly.Lua.ORDER_ATOMIC]; };
+    Blockly.Lua['draw_pixel'] = function(block) { const x = block.getFieldValue('X'); const y = block.getFieldValue('Y'); const color = `"${block.getFieldValue('COLOR')}"`; return `rg.setPixel(${x},${y},${color})\n`; };
+    Blockly.Lua['draw_text'] = function(block) { const text = `"${block.getFieldValue('TEXT')}"`; const x = block.getFieldValue('X'); const y = block.getFieldValue('Y'); return `rg.drawText(${text},${x},${y})\n`; };
 
     function showCode() {
       const code = Blockly.Lua.workspaceToCode(workspace);
