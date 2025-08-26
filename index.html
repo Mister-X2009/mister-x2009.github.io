@@ -73,28 +73,42 @@
 <body>
   <h1>🧭 Hauptmenü</h1>
 
-  <div class="menu">
-    <!-- Beispielmenüpunkte -->
-    <div class="menu-item">
-      <div class="menu-title">Polytrack Profilseite</div>
-      <div class="menu-desc">Erstelle und verwalte deine Profile für Polytrack inklusive Bilder und Code.</div>
-      <a class="menu-link" href="polytrack.html">Öffnen</a>
-    </div>
-
-    <div class="menu-item">
-      <div class="menu-title">Zukunftiges Sandbox-Spiel</div>
-      <div class="menu-desc">Ideensammlung und Konzepte für dein zukünftiges Spiel mit Inventar und Seasons.</div>
-      <a class="menu-link" href="sandbox_idee.html">Öffnen</a>
-    </div>
-
-    <!-- HIER WEITERE MENÜPUNKTE HINZUFÜGEN -->
-    <!--
-    <div class="menu-item">
-      <div class="menu-title">Titel hier</div>
-      <div class="menu-desc">Beschreibung hier.</div>
-      <a class="menu-link" href="dateiname.html">Öffnen</a>
-    </div>
-    -->
+  <div class="menu" id="menu-container">
+    <!-- Dynamische Einträge werden per JS hinzugefügt -->
   </div>
+
+  <script>
+    // Hier fügst du deine Seiten ein:
+    const apps = [
+      {
+        title: "RetroGadgets Blockly",
+        desc: "Erstelle Lua-Code für RetroGadgets mit einem visuellen Editor.",
+        link: "apps/blockly.html"
+      },
+      {
+        title: "Polytrack Profilseite",
+        desc: "Erstelle und verwalte deine Profile für Polytrack inklusive Bilder und Code.",
+        link: "polytrack.html"
+      },
+      {
+        title: "Zukünftiges Sandbox-Spiel",
+        desc: "Ideensammlung und Konzepte für dein zukünftiges Spiel mit Inventar und Seasons.",
+        link: "sandbox_idee.html"
+      }
+    ];
+
+    const container = document.getElementById('menu-container');
+
+    apps.forEach(app => {
+      const item = document.createElement('div');
+      item.className = 'menu-item';
+      item.innerHTML = `
+        <div class="menu-title">${app.title}</div>
+        <div class="menu-desc">${app.desc}</div>
+        <a class="menu-link" href="${app.link}">Öffnen</a>
+      `;
+      container.appendChild(item);
+    });
+  </script>
 </body>
 </html>
