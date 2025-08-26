@@ -2,20 +2,21 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>RetroGadgets Blockly Modern</title>
-  <script src="https://unpkg.com/blockly@12.2.0/blockly.min.js"></script>
+  <title>RetroGadgets Blockly Retro-Style</title>
+  <script src="https://unpkg.com/blockly/blockly.min.js"></script>
   <script src="retro_blocks.js"></script>
   <style>
-    html, body { height: 100%; margin: 0; font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #fff; }
-    #blocklyDiv { height: 75vh; width: 100%; }
-    #controls { display: flex; gap: 10px; padding: 10px; background: linear-gradient(90deg,#111,#222); border-radius: 12px; justify-content: center; }
-    button { border-radius: 8px; background: linear-gradient(90deg,#00c896,#00e6ae); color: #000; font-weight: bold; padding: 10px 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); cursor: pointer; }
-    button:hover { background: linear-gradient(90deg,#00e6ae,#00ffc9); }
-    pre { background: #111; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); padding: 15px; font-family: 'Fira Code', monospace; color: #0f0; max-height: 20vh; overflow-y: auto; margin: 10px; }
+    html, body { height: 100%; margin: 0; font-family: 'Press Start 2P', monospace; background: #111; color: #0f0; }
+    #blocklyDiv { height: 75vh; width: 100%; border: 3px solid #0f0; box-shadow: 0 0 20px #0f0 inset; }
+    #controls { display: flex; gap: 10px; padding: 10px; background: #000; border-top: 3px solid #0f0; justify-content: center; }
+    button { border-radius: 4px; background: #000; color: #0f0; font-weight: bold; padding: 10px 15px; border: 2px solid #0f0; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #0f0; color: #000; }
+    pre { background: #000; border: 2px solid #0f0; border-radius: 6px; padding: 15px; font-family: 'Fira Code', monospace; color: #0f0; max-height: 20vh; overflow-y: auto; margin: 10px; }
+    .blocklyText { fill: #0f0; font-family: 'Press Start 2P', monospace; }
   </style>
 </head>
 <body>
-  <h1 style="text-align:center;color:#00c896;">RetroGadgets Blockly Editor</h1>
+  <h1 style="text-align:center;color:#0f0; text-shadow: 0 0 5px #0f0;">RetroGadgets Blockly Editor</h1>
   <div id="blocklyDiv"></div>
   <div id="controls">
     <button onclick="showCode()">Lua-Code anzeigen</button>
@@ -23,7 +24,6 @@
   </div>
   <pre id="code"></pre>
 
-  <!-- Leere Toolbox, wird per JS gefüllt -->
   <xml id="toolbox" style="display:none"></xml>
 
   <script>
@@ -31,13 +31,13 @@
       toolbox: document.getElementById('toolbox'),
       renderer: 'zelos',
       theme: Blockly.Themes.Dark,
-      grid: { spacing: 20, length: 3, colour: '#555', snap: true },
+      grid: { spacing: 20, length: 3, colour: '#0f0', snap: true },
       zoom: { controls: true, wheel: true },
       trashcan: true
     });
 
-    // Blöcke und Toolbox Tabs aus externer Datei einfügen
     addRetroGadgetsBlocks(workspace);
+
     const toolbox = document.getElementById('toolbox');
     retroGadgetsTabs.forEach(tab => {
       const category = document.createElement('category');
@@ -51,21 +51,44 @@
       toolbox.appendChild(category);
     });
 
-    // Lua Generatoren
-    Blockly.Lua['cpu_block'] = function(block) { const id = block.getFieldValue('ID'); return `CPU(${id})\n`; };
-    Blockly.Lua['set_button_light'] = function(block) { const x = block.getFieldValue('X'); const y = block.getFieldValue('Y'); const color = `"${block.getFieldValue('COLOR')}"`; return `rg.setButtonLight(${x},${y},${color})\n`; };
-    Blockly.Lua['button_pressed'] = function(block) { const x = block.getFieldValue('X'); const y = block.getFieldValue('Y'); return [`rg.buttonPressed(${x},${y})`, Blockly.Lua.ORDER_ATOMIC]; };
-    Blockly.Lua['draw_pixel'] = function(block) { const x = block.getFieldValue('X'); const y = block.getFieldValue('Y'); const color = `"${block.getFieldValue('COLOR')}"`; return `rg.setPixel(${x},${y},${color})\n`; };
-    Blockly.Lua['draw_text'] = function(block) { const text = `"${block.getFieldValue('TEXT')}"`; const x = block.getFieldValue('X'); const y = block.getFieldValue('Y'); return `rg.drawText(${text},${x},${y})\n`; };
+    Blockly.Lua['cpu_block'] = block => `CPU(${block.getFieldValue('ID')})\n`;
+    Blockly.Lua['set_button_light'] = block => {
+      const x = block.getFieldValue('X');
+      const y = block.getFieldValue('Y');
+      const color = `"${block.getFieldValue('COLOR')}"`;
+      return `rg.setButtonLight(${x},${y},${color})\n`;
+    };
+    Blockly.Lua['button_pressed'] = block => [`rg.buttonPressed(${block.getFieldValue('X')},${block.getFieldValue('Y')})`, Blockly.Lua.ORDER_ATOMIC];
+    Blockly.Lua['multi_button_event'] = block => `rg.multiButtonPressed(${block.getFieldValue('BUTTONS')})\n`;
+    Blockly.Lua['draw_pixel'] = block => {
+      const x = block.getFieldValue('X');
+      const y = block.getFieldValue('Y');
+      const color = `"${block.getFieldValue('COLOR')}"`;
+      return `rg.setPixel(${x},${y},${color})\n`;
+    };
+    Blockly.Lua['draw_text'] = block => {
+      const text = `"${block.getFieldValue('TEXT')}"`;
+      const x = block.getFieldValue('X');
+      const y = block.getFieldValue('Y');
+      return `rg.drawText(${text},${x},${y})\n`;
+    };
+    Blockly.Lua['draw_animation'] = block => {
+      const anim = `"${block.getFieldValue('ANIM')}"`;
+      const x = block.getFieldValue('X');
+      const y = block.getFieldValue('Y');
+      const speed = block.getFieldValue('SPEED');
+      return `rg.drawAnimation(${anim},${x},${y},${speed})\n`;
+    };
+    Blockly.Lua['update_loop'] = block => `update()\n`;
+    Blockly.Lua['on_event'] = block => `rg.onEvent("${block.getFieldValue('EVENT')}")\n`;
 
     function showCode() {
-      const code = Blockly.Lua.workspaceToCode(workspace);
-      document.getElementById('code').textContent = code;
+      document.getElementById('code').textContent = Blockly.Lua.workspaceToCode(workspace);
     }
 
     function downloadCode() {
       const code = Blockly.Lua.workspaceToCode(workspace);
-      const blob = new Blob([code], {type: 'text/plain'});
+      const blob = new Blob([code], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
