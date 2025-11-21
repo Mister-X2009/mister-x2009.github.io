@@ -49,7 +49,7 @@ async function fetchProjects() {
     for (let file of files) {
       if (file.type === 'dir') {
         await fetchRecursive(file.path);
-      } else if (file.name === 'index.html') {
+      } else if (file.name.endsWith('.html')) {
         const htmlRes = await fetch(file.download_url);
         const htmlText = await htmlRes.text();
         const parser = new DOMParser();
