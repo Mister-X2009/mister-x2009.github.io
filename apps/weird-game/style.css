@@ -1,0 +1,116 @@
+:root {
+    --bg-color: #1a1a1a;
+    --ui-bg: rgba(30, 30, 30, 0.9);
+    --text-color: #eeeeee;
+    --accent: #00d2ff;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Courier New', Courier, monospace; /* Technical monospaced look */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+#game-container {
+    position: relative;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    border: 1px solid #444;
+}
+
+canvas {
+    /* Crucial for pixel art look: disable anti-aliasing */
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    
+    width: 800px;  /* Display size */
+    height: 800px; /* Display size */
+    background-color: #000;
+    cursor: crosshair;
+    display: block;
+}
+
+#ui-layer {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 200px;
+    pointer-events: none; /* Let clicks pass through to canvas where no UI exists */
+}
+
+#hud {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.panel {
+    background: var(--ui-bg);
+    padding: 10px;
+    border: 1px solid #555;
+    pointer-events: auto; /* Re-enable clicks for buttons */
+}
+
+h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    text-transform: uppercase;
+    border-bottom: 1px solid #444;
+    padding-bottom: 4px;
+}
+
+.color-picker {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.btn-color {
+    width: 30px;
+    height: 30px;
+    border: 2px solid #333;
+    cursor: pointer;
+    font-weight: bold;
+    color: #000;
+}
+
+.btn-color.active {
+    border-color: #fff;
+    transform: scale(1.1);
+}
+
+.actions button, #btn-export {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 5px;
+    background: #333;
+    color: #fff;
+    border: 1px solid #555;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.actions button:hover, #btn-export:hover {
+    background: #444;
+}
+
+.actions button:active {
+    background: #222;
+}
+
+#resource-display {
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.legend {
+    font-size: 10px;
+    color: #aaa;
+}
