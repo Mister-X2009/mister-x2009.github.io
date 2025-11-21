@@ -139,4 +139,177 @@ function renderProducts(){
   });
 }
 
-// ... Der restliche Code für renderSales, renderStats, populateSelects, sellProduct, CSV-Import/Export, Labels, Utilities etc. bleibt gleich.
+function renderSales(){
+  els.salesList.innerHTML = '';
+  sales.slice().reverse().forEach(s=>{
+    const d = document.createElement('div'); d.className='saleItem';
+    d.innerHTML = `${escapeHtml(s.date)}: <strong>${escapeHtml(s.name)}</strong> × ${s.qty} — ${Number(s.sum).toFixed(2)} €`;
+    els.salesList.appendChild(d);
+  });
+}
+
+function renderStats(){
+  const total = db.reduce((acc,p)=>acc + (Number(p.qty)||0)*(Number(p.price)||0), 0);
+  els.totalValue.textContent = total.toFixed(2) + ' €';
+
+  const catMap = {};
+  db.forEach(p=>{ catMap[p.category] = (catMap[p.category]||0) + (Number(p.qty)||0); });
+  const labels = Object.keys(catMap); 
+  const data = labels.map(l=>catMap[l]);
+
+  if(catChartObj) catChartObj.destroy();
+  catChartObj = new Chart(els.catChart.getContext('2d'), {
+    type:'pie', 
+    data:{labels, datasets:[{data}]}, 
+    options:{plugins:{legend:{display:true}}}
+  });
+
+  const last30 = {}; 
+  const now = new Date();
+  for(let i=0;i<30;i++){ 
+    const d = new Date(now); 
+    d.setDate(now.getDate()-i); 
+    last30[dateKey(d)]=0; 
+  }
+  sales.forEach(s=>{ 
+    const k = dateKey(new Date(s.date)); 
+    if(k in last30) last30[k]+=Number(s.qty); 
+  });
+  const sLabels = Object.keys(last30).reverse(); 
+  const sData = sLabels.map(k=>last30[k]);
+  if(salesChartObj) salesChartObj.destroy();
+  salesChartObj = new Chart(els.salesChart.getContext('2d'), {
+    type:'bar', 
+    data:{labels:sLabels, datasets:[{label:'Verkaufte Stück', data:sData}]}, 
+    options:{scales:{y:{beginAtZero:true}}}
+  });
+}
+
+function populateSelects(){
+  els.sellSelect.innerHTML = db.map(p=>`<option value="${p.barcode}">${escapeHtml(p.name)} (${p.qty})</option>`).join('');
+  els.labelSelect.innerHTML = db.map(p=>`<option value="${p.barcode}">${escapeHtml(p.name)}</option>`).join('');
+}
+
+function sellProduct(){
+  const barcode = els.sellSelect.value; 
+  const qty = Number(els.sellQty.value) || 1; 
+  const prod = db.find(p=>p.barcode===barcode); 
+  if(!prod) return alert('Produkt nicht gefunden');
+  if(prod.qty < qty) return alert('Nicht genügend Bestand');
+  prod.qty -= qty; 
+  prod.sold = (prod.sold||0)+qty; 
+  const sum = qty * Number(prod.price||0);
+  sales.push({date: new Date().toISOString(), barcode: prod.barcode, name: prod.name, qty, sum});
+  saveState(); renderAll();
+}
+
+function exportCSV(){
+  const rows = [['id','name','qty','price','barcode','category','img','sold']];
+  db.forEach(p=>rows.push([p.id, p.name, p.qty, p.price, p.barcode, p.category, p.img ? p.img.split(',')[1] : '', p.sold||0]));
+  const csv = rows.map(r=>r.map(cell=>`"${String(cell||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='produkte_export.csv'; a.click(); 
+  URL.revokeObjectURL(url);
+}
+
+async function importCSV(){
+  const file = els.csvFile.files[0]; 
+  if(!file) return alert('Keine Datei gewählt');
+  const txt = await file.text();
+  const lines = parseCSV(txt);
+  if(lines.length < 2) return alert('Keine Daten');
+  const headers = lines[0].map(h=>h.toLowerCase());
+  const data = lines.slice(1).map(r=>Object.fromEntries(r.map((c,i)=>[headers[i]||i,c])));
+
+  if(els.importMode.value === 'overwrite'){
+    db = data.map(d=>({
+      id: Number(d.id) || Date.now()+Math.random(), 
+      name:d.name || '', 
+      qty: Number(d.qty)||0, 
+      price: Number(d.price)||0, 
+      barcode: d.barcode || generateBarcode(), 
+      category: d.category || 'Unkategorisiert', 
+      img: d.img ? 'data:image/*;base64,'+d.img : '', 
+      sold: Number(d.sold)||0
+    }));
+  } else {
+    data.forEach(d=>{
+      const bc = d.barcode || generateBarcode(); 
+      const existing = db.find(x=>x.barcode===bc);
+      if(existing){
+        existing.qty = (Number(existing.qty)||0) + (Number(d.qty)||0);
+        if(d.name) existing.name = d.name; 
+        if(d.price) existing.price = Number(d.price)||existing.price; 
+        if(d.category) existing.category = d.category;
+        if(d.img) existing.img = 'data:image/*;base64,'+d.img;
+      } else {
+        db.push({
+          id: Number(d.id)||Date.now()+Math.random(), 
+          name:d.name||'', 
+          qty: Number(d.qty)||0, 
+          price:Number(d.price)||0, 
+          barcode: bc, 
+          category:d.category||'Unkategorisiert', 
+          img: d.img ? 'data:image/*;base64,'+d.img : '', 
+          sold: Number(d.sold)||0
+        });
+      }
+    });
+  }
+  saveState(); renderAll(); alert('Import fertig');
+}
+
+function parseCSV(text){
+  const rows=[]; let cur=[]; let curCell=''; let inQuotes=false; 
+  for(let i=0;i<text.length;i++){ 
+    const ch=text[i]; const nxt=text[i+1];
+    if(inQuotes){ 
+      if(ch==='"'){ if(nxt==='"'){ curCell+='"'; i++; } else { inQuotes=false; } } 
+      else { curCell+=ch; } 
+    }
+    else { 
+      if(ch==='"'){ inQuotes=true; } 
+      else if(ch===','){ cur.push(curCell); curCell=''; } 
+      else if(ch==='
+'){ continue; } 
+      else if(ch==='
+'){ cur.push(curCell); rows.push(cur); cur=[]; curCell=''; } 
+      else { curCell+=ch; } 
+    }
+  }
+  if(curCell!=='' || cur.length>0){ cur.push(curCell); rows.push(cur); }
+  return rows;
+}
+
+function createLabelHTML(prod){
+  return `<div class="labelPage"><div class="labelInner"><h2>${escapeHtml(prod.name)}</h2><p>Preis: ${Number(prod.price||0).toFixed(2)} €</p><svg id="lbl-${prod.id}"></svg><p>${escapeHtml(prod.barcode)}</p></div></div>`;
+}
+
+function printLabels(all){
+  let items = [];
+  if(all) items = db.slice(); 
+  else { 
+    const bc = els.labelSelect.value; 
+    const p = db.find(x=>x.barcode===bc); 
+    if(!p) return alert('Kein Produkt gewählt'); 
+    items = [p]; 
+  }
+  els.labelPreview.innerHTML = items.map(createLabelHTML).join('');
+  items.forEach(p=>{ 
+    try{ JsBarcode(`#lbl-${p.id}`, p.barcode, {format:'CODE128', displayValue:false, width:2, height:80}); } 
+    catch(e){} 
+  });
+  setTimeout(()=>{ window.print(); }, 300);
+}
+
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+function dateKey(d){ const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
+
+(function(){ const dark = localStorage.getItem('darkMode')==='1'; els.darkToggle.checked = dark; applyDark(dark); })();
+function toggleDarkMode(){ applyDark(els.darkToggle.checked); localStorage.setItem('darkMode', els.darkToggle.checked ? '1':'0'); }
+function applyDark(on){ document.documentElement.classList.toggle('dark', !!on); }
+
+function resetFilters(){ els.search.value=''; els.minQty.value=''; els.maxPrice.value=''; els.filterCategory.value=''; renderAll(); }
+
+renderAll();
