@@ -1,0 +1,58 @@
+:root {
+  --bg: #f7f7f7;
+  --fg: #222;
+  --card: white;
+  --accent: #0078ff;
+}
+body[data-theme="dark"] {
+  --bg: #181818;
+  --fg: #eee;
+  --card: #242424;
+  --accent: #3399ff;
+}
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Arial, sans-serif;
+  margin: 40px;
+  text-align: center;
+  transition: background 0.3s, color 0.3s;
+}
+section {
+  background: var(--card);
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+input, button {
+  padding: 8px;
+  margin: 5px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+button {
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  border: none;
+}
+button:hover {
+  opacity: 0.9;
+}
+table {
+  width: 95%;
+  margin: 0 auto;
+  border-collapse: collapse;
+}
+th, td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #ccc;
+}
+th {
+  background: var(--accent);
+  color: white;
+}
+img {
+  border-radius: 6px;
+}
