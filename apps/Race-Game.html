@@ -36,8 +36,32 @@
             align-items: center;
             min-height: 100vh;
             padding: 1rem;
+            transition: all 0.3s ease;
         }
 
+        /* Hauptcontainer im Vollbildmodus */
+        #app:fullscreen, #app:-webkit-full-screen, #app:-moz-full-screen {
+            background-color: #1e1e1e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            width: 100vw;
+            height: 100vh;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* Canvas-Container */
+        #canvasContainer {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-grow: 1;
+        }
+        
         /* Wichtig für den Pixel-Art-Look auf dem Canvas */
         #gameCanvas {
             image-rendering: pixelated;
@@ -45,6 +69,23 @@
             image-rendering: -webkit-crisp-edges;
             border: 4px solid #6f7478;
             box-shadow: 0 0 0 8px #4e5458, 0 0 0 12px #3c3f41;
+            /* Standardgröße für den Fenster-Modus */
+            width: 100%; 
+            max-width: 512px;
+            aspect-ratio: 1 / 1;
+            transition: all 0.3s ease;
+            /* WICHTIG: Display wird standardmäßig in JS auf 'block' gesetzt */
+        }
+        
+        /* Überschreibt die maximale Breite im Vollbildmodus */
+        #app:fullscreen #gameCanvas, #app:-webkit-full-screen #gameCanvas, #app:-moz-full-screen #gameCanvas {
+             max-width: 100vh;
+             max-height: 100vw;
+             width: auto;
+             height: auto;
+             margin: auto;
+             max-width: min(100vw, 100vh);
+             max-height: min(100vw, 100vh);
         }
 
         .pixel-button {
@@ -98,31 +139,31 @@
 
     <div id="app" class="flex flex-col lg:flex-row gap-4 w-full max-w-7xl mx-auto">
         
-        <!-- Linke Spalte: Steuerung und Konfiguration (Wird ausgeblendet) -->
+        <!-- Linke Spalte: Steuerung und Konfiguration -->
         <div id="setupPanel" class="lg:w-1/3 p-4 bg-ui-bg rounded-lg shadow-xl border-2 border-ui-border">
             <h1 class="text-xl mb-4 text-pixel-yellow border-b pb-2 border-ui-border">Pixel Racer: Lokal 2P Setup</h1>
 
             <div class="mb-4 pixel-text">
                 <p>Spielmodus: <span class="text-green-400">Lokaler 2-Spieler Modus</span></p>
                 <div class="car-legend">
-                    <div class="legend-item"><span class="legend-color bg-p1-color"></span>Spieler 1</div>
-                    <div class="legend-item"><span class="legend-color bg-p2-color"></span>Spieler 2</div>
+                    <div class="legend-item"><span class="legend-color bg-p1-color"></span>Spieler 1 (WASD)</div>
+                    <div class="legend-item"><span class="legend-color bg-p2-color"></span>Spieler 2 (Pfeile)</div>
                 </div>
             </div>
             
             <h2 class="text-lg mb-2 mt-4 text-pixel-yellow">SVG-Karte (256x256 empfohlen)</h2>
             <textarea id="svgMapInput" rows="10" class="w-full bg-pixel-black text-white p-2 rounded border border-ui-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-pixel-yellow">
-<!-- Fügen Sie hier Ihre SVG-Karte ein. NUR die Farben der Pixel im Raster bestimmen das Terrain: -->
-<!-- #000000 (Schwarz) = Straße (Schnell) -->
-<!-- #FFFF00 (Gelb) = Sand (Langsam) -->
-<!-- #00FF00 (Grün) = Gras (Sehr Langsam) -->
+<!-- Fügen Sie hier Ihre SVG-Karte ein. Farben bestimmen das Terrain: -->
+<!-- #000000 (Schwarz) = Straße -->
+<!-- #FFFF00 (Gelb) = Sand -->
+<!-- #00FF00 (Grün) = Gras -->
 
 <svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
   <!-- Beispiel-Karte: Eine Rennstrecke mit Startlinie -->
   <rect x="0" y="0" width="256" height="256" fill="#00FF00"/>
   <circle cx="128" cy="128" r="100" fill="#FFFF00"/>
   <path d="M 50 128 A 70 70 0 1 1 206 128 L 206 128 A 90 90 0 1 0 50 128 Z" fill="#000000"/>
-  <!-- Startlinie -->
+  <!-- Startlinie (Weiß wird als Straße behandelt) -->
   <rect x="110" y="28" width="36" height="5" fill="#FFFFFF"/> 
 </svg>
             </textarea>
@@ -131,19 +172,20 @@
 
             <h2 class="text-lg mb-2 mt-4 text-pixel-yellow">Steuerung</h2>
             <div class="pixel-text text-sm space-y-2">
-                <p class="border-b border-ui-border pb-1 text-p1-color">SPIELER 1 (Rot)</p>
+                <p class="border-b border-ui-border pb-1 text-p1-color">SPIELER 1 (Rot, WASD)</p>
                 <p>Beschl./Bremsen: <span class="text-white">W / S</span></p>
                 <p>Lenken: <span class="text-white">A / D</span></p>
                 
-                <p class="border-b border-ui-border pb-1 pt-2 text-p2-color">SPIELER 2 (Blau)</p>
+                <p class="border-b border-ui-border pb-1 pt-2 text-p2-color">SPIELER 2 (Blau, Pfeile)</p>
                 <p>Beschl./Bremsen: <span class="text-white">Pfeil Hoch / Pfeil Runter</span></p>
                 <p>Lenken: <span class="text-white">Pfeil Links / Pfeil Rechts</span></p>
             </div>
         </div>
 
         <!-- Rechte Spalte: Spiel-Canvas und Meldungen -->
-        <div class="lg:w-2/3 flex flex-col items-center justify-center relative">
-            <canvas id="gameCanvas" width="512" height="512" class="w-full aspect-square max-w-xl"></canvas>
+        <div id="canvasContainer" class="lg:w-2/3 flex flex-col items-center justify-center relative">
+            <!-- Das Canvas ist standardmäßig versteckt und wird bei Spielstart eingeblendet -->
+            <canvas id="gameCanvas" width="512" height="512" style="display: none;"></canvas>
             
             <div id="messageBox" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-ui-bg p-6 rounded-lg shadow-2xl border-4 border-ui-border text-center text-pixel-yellow hidden">
                 <p id="messageText" class="text-xl mb-4">SPIEL LÄDT...</p>
@@ -156,9 +198,8 @@
     <!-- Spiel-Logik Skript -->
     <script>
         // --- Globale Spiel-Variablen ---
-        const CANVAS_WIDTH = 512;
-        const CANVAS_HEIGHT = 512;
-        const MAP_RESOLUTION = 32; // 32x32 Tiles
+        const INITIAL_CANVAS_SIZE = 512; // Die interne Zeichenauflösung (z.B. 512x512)
+        const MAP_RESOLUTION = 256; // Die Rasterauflösung der Spiel-Logik (passt zur 256x256 SVG)
         
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -167,14 +208,20 @@
         const setupPanel = document.getElementById('setupPanel');
         const messageBox = document.getElementById('messageBox');
         const messageText = document.getElementById('messageText');
+        const appContainer = document.getElementById('app');
+        const canvasContainer = document.getElementById('canvasContainer');
 
-        let gameMap = null; // 2D-Array der Terrain-Typen
+        // Setze die interne (Pixel-)Auflösung des Canvas
+        canvas.width = INITIAL_CANVAS_SIZE;
+        canvas.height = INITIAL_CANVAS_SIZE;
+
+        let gameMap = null;
         let isGameRunning = false;
         let lastUpdateTime = performance.now();
         
         // Allgemeine Auto-Eigenschaften
         const BASE_CAR_PROPS = {
-            rotation: 0, // Radians
+            rotation: 0,
             speed: 0,
             maxSpeed: 4,
             acceleration: 0.08,
@@ -187,8 +234,8 @@
         // Spieler 1 (Rot)
         let car1 = {
             ...BASE_CAR_PROPS,
-            x: CANVAS_WIDTH / 2 - 20, // Start links von der Mitte
-            y: CANVAS_HEIGHT / 2,
+            x: INITIAL_CANVAS_SIZE / 2 - 20,
+            y: INITIAL_CANVAS_SIZE / 2,
             color: 'var(--p1-color)',
             player: 1
         };
@@ -196,13 +243,13 @@
         // Spieler 2 (Blau)
         let car2 = {
             ...BASE_CAR_PROPS,
-            x: CANVAS_WIDTH / 2 + 20, // Start rechts von der Mitte
-            y: CANVAS_HEIGHT / 2,
+            x: INITIAL_CANVAS_SIZE / 2 + 20,
+            y: INITIAL_CANVAS_SIZE / 2,
             color: 'var(--p2-color)',
             player: 2
         };
 
-        const cars = [car1, car2]; // Array für einfache Iteration
+        const cars = [car1, car2];
 
         // Eingabezustand für beide Spieler
         const INPUT = {
@@ -210,37 +257,57 @@
             p2: { up: false, down: false, left: false, right: false }
         };
         
-        // --- Terrain-Definition ---
+        // --- Terrain-Definition mit Pixel-Farbpaletten ---
         const TERRAINS = {
-            'road': { color: '#4e5458', maxSpeedFactor: 1.0, pixelColors: ['#3c3f41', '#4e5458', '#5a6064'] },
-            'sand': { color: '#d4ac0d', maxSpeedFactor: 0.4, pixelColors: ['#b8860b', '#d4ac0d', '#f0e68c'] },
-            'grass': { color: '#4caf50', maxSpeedFactor: 0.2, pixelColors: ['#38761d', '#6aa84f', '#93c47d'] },
-            'default': { color: '#000000', maxSpeedFactor: 0.1, pixelColors: ['#000000'] }
+            'road': { maxSpeedFactor: 1.0, pixelColors: ['#3c3f41', '#4e5458', '#2e3133'] },
+            'sand': { maxSpeedFactor: 0.4, pixelColors: ['#b8860b', '#d4ac0d', '#f0e68c'] },
+            'grass': { maxSpeedFactor: 0.2, pixelColors: ['#38761d', '#6aa84f', '#2f6018'] },
+            'default': { maxSpeedFactor: 0.1, pixelColors: ['#000000'] }
         };
 
         const TERRAIN_COLORS = {
-            '#000000': 'road', // Schwarz
-            '#ffff00': 'sand', // Gelb
-            '#00ff00': 'grass', // Grün
-            '#ffffff': 'road' // Weiß (Startlinie wird als Straße behandelt)
+            '#000000': 'road', // Schwarz = Straße
+            '#ffff00': 'sand',  // Gelb = Sand
+            '#00ff00': 'grass', // Grün = Gras
+            '#ffffff': 'road'   // Weiß wird als Start/Ziel auch zu Straße
         };
 
-        // --- Hilfsfunktion: Eine einfache Meldung anzeigen ---
+        // --- Hilfsfunktionen ---
+        
         function showMessage(text) {
             messageText.textContent = text;
             messageBox.classList.remove('hidden');
             isGameRunning = false;
         }
 
-        // --- SVG-Parsing und Map-Erstellung ---
-
         /**
-         * Konvertiert den SVG-String in ein 2D-Array von Terrain-Typen, 
-         * indem das SVG auf ein verstecktes Canvas gezeichnet wird.
+         * Schaltet in den Vollbildmodus für den App-Container.
+         * Fängt Fehler ab, um unhandled rejections zu vermeiden.
          */
+        function goFullscreen() {
+            const requestMethod = appContainer.requestFullscreen || 
+                                  appContainer.mozRequestFullScreen || 
+                                  appContainer.webkitRequestFullscreen || 
+                                  appContainer.msRequestFullscreen;
+
+            if (requestMethod) {
+                const promise = requestMethod.call(appContainer);
+                
+                if (promise && typeof promise.catch === 'function') {
+                     promise.catch(err => {
+                        console.warn("Vollbildmodus konnte nicht aktiviert werden. Das Spiel startet im Fenstermodus.", err);
+                     });
+                }
+            } else {
+                console.warn("Vollbildmodus wird von diesem Browser nicht unterstützt.");
+            }
+        }
+
+        // --- SVG-Parsing und Map-Erstellung ---
         function loadMapFromSvg(svgString) {
             return new Promise((resolve, reject) => {
                 const hiddenCanvas = document.createElement('canvas');
+                // Die Hilfs-Leinwand muss die MAP_RESOLUTION (256x256) haben
                 hiddenCanvas.width = MAP_RESOLUTION;
                 hiddenCanvas.height = MAP_RESOLUTION;
                 const hCtx = hiddenCanvas.getContext('2d');
@@ -251,6 +318,7 @@
 
                 img.onload = () => {
                     hCtx.clearRect(0, 0, MAP_RESOLUTION, MAP_RESOLUTION);
+                    // Zeichne das SVG auf die 256x256 Leinwand
                     hCtx.drawImage(img, 0, 0, MAP_RESOLUTION, MAP_RESOLUTION);
                     URL.revokeObjectURL(url);
                     
@@ -258,6 +326,7 @@
                     for (let y = 0; y < MAP_RESOLUTION; y++) {
                         newMap[y] = [];
                         for (let x = 0; x < MAP_RESOLUTION; x++) {
+                            // Lese den Farbwert jedes Pixels der 256x256 Karte
                             const pixel = hCtx.getImageData(x, y, 1, 1).data;
                             const hexColor = '#' + [pixel[0], pixel[1], pixel[2]]
                                 .map(c => c.toString(16).padStart(2, '0'))
@@ -279,36 +348,33 @@
             });
         }
 
-        // --- Spiel-Rendering ---
+        // --- Spiel-Rendering mit Pixel-Texturen ---
         
         function drawMap() {
             if (!gameMap) return;
 
-            const mapTileWidth = CANVAS_WIDTH / MAP_RESOLUTION;
-            const mapTileHeight = CANVAS_HEIGHT / MAP_RESOLUTION;
+            const mapTileWidth = INITIAL_CANVAS_SIZE / MAP_RESOLUTION; // 2
+            const mapTileHeight = INITIAL_CANVAS_SIZE / MAP_RESOLUTION; // 2
             
             for (let i = 0; i < MAP_RESOLUTION; i++) {
                 for (let j = 0; j < MAP_RESOLUTION; j++) {
                     const terrainType = gameMap[j][i];
-                    const x = i * mapTileWidth;
-                    const y = j * mapTileHeight;
+                    const x = i * mapTileWidth; // Start-X auf der 512er Canvas
+                    const y = j * mapTileHeight; // Start-Y auf der 512er Canvas
 
                     const { pixelColors } = TERRAINS[terrainType];
                     
-                    // Zeichne den Tile mit einem einfachen, zufälligen 4x4-Pixel-Muster
+                    // Zeichne den 2x2 Block auf der 512er Canvas
                     for (let px = 0; px < mapTileWidth; px++) {
                         for (let py = 0; py < mapTileHeight; py++) {
                             const screenX = x + px;
                             const screenY = y + py;
                             
-                            // Simple 2x2 oder 4x4 Kachel-Textur im Tile
-                            const colorIndex = ((px % 4 < 2) === (py % 4 < 2)) ? 0 : 1;
+                            // Erstelle ein einfaches Rauschmuster für die Textur
+                            const patternIndex = (px + py) % 2; 
+                            const finalColorIndex = (i * 7 + j * 11 + patternIndex) % pixelColors.length;
                             
-                            // Verwende eine zufällige Farbvariation aus der Palette des Terrains
-                            // Die "Zufälligkeit" basiert auf den Tile-Koordinaten
-                            const baseIndex = (i * 13 + j * 7 + colorIndex) % pixelColors.length;
-                            
-                            ctx.fillStyle = pixelColors[baseIndex];
+                            ctx.fillStyle = pixelColors[finalColorIndex];
                             ctx.fillRect(screenX, screenY, 1, 1);
                         }
                     }
@@ -321,61 +387,63 @@
             ctx.translate(c.x, c.y);
             ctx.rotate(c.rotation);
 
-            // Körper
+            // Body
             ctx.fillStyle = c.color;
             ctx.fillRect(-c.width / 2, -c.height / 2, c.width, c.height);
 
-            // Fenster/Cockpit (Pixel-Look)
+            // Cockpit
             ctx.fillStyle = '#FFFFFF';
             ctx.fillRect(-c.width / 4, -c.height / 2 + 2, c.width / 2, c.height / 4);
 
-            // Spieler-Nummer als kleines Dach-Icon
+            // Player Number
             ctx.fillStyle = '#212121';
             ctx.font = '6px "Press Start 2P"';
             ctx.textAlign = 'center';
             ctx.fillText(c.player, 0, -c.height / 2 + 10);
-
 
             ctx.restore();
         }
 
         // --- Spiel-Update-Logik ---
 
+        /**
+         * Gibt das Terrain an der Position (x, y) zurück und verwendet Clamping
+         * um sicherzustellen, dass immer ein gültiger Wert vom Rand zurückgegeben wird.
+         */
         function getTerrainAt(x, y) {
-            const mapTileWidth = CANVAS_WIDTH / MAP_RESOLUTION;
-            const mapTileHeight = CANVAS_HEIGHT / MAP_RESOLUTION;
+            const mapTileWidth = INITIAL_CANVAS_SIZE / MAP_RESOLUTION;
+            const mapTileHeight = INITIAL_CANVAS_SIZE / MAP_RESOLUTION;
 
-            const tileX = Math.floor(x / mapTileWidth);
-            const tileY = Math.floor(y / mapTileHeight);
+            // Konvertiere die Canvas-Koordinaten in Karten-Indizes
+            let tileX = Math.floor(x / mapTileWidth);
+            let tileY = Math.floor(y / mapTileHeight);
 
-            if (tileX >= 0 && tileX < MAP_RESOLUTION && tileY >= 0 && tileY < MAP_RESOLUTION) {
-                return gameMap[tileY][tileX];
-            }
-            return 'default'; // Außerhalb der Karte ist Standard-Terrain
+            // Clamping: Beschränke die Indizes auf den gültigen Bereich [0, MAP_RESOLUTION - 1]
+            tileX = Math.max(0, Math.min(MAP_RESOLUTION - 1, tileX));
+            tileY = Math.max(0, Math.min(MAP_RESOLUTION - 1, tileY));
+
+            // Da wir Clamping verwenden, ist der Zugriff auf gameMap[tileY][tileX] immer sicher
+            return gameMap[tileY][tileX];
         }
         
         function updateCar(car, input, deltaTime) {
             const currentTerrain = getTerrainAt(car.x, car.y);
             const maxSpeedFactor = TERRAINS[currentTerrain].maxSpeedFactor;
 
-            // 1. Eingabe verarbeiten
             if (input.up) {
                 car.speed += car.acceleration * deltaTime;
             } else if (input.down) {
                 car.speed -= car.acceleration * deltaTime * 0.5;
             }
 
-            // 2. Max Speed und Reibung anwenden
             const maxAllowedSpeed = car.maxSpeed * maxSpeedFactor;
             car.speed = Math.min(Math.max(car.speed, -maxAllowedSpeed / 2), maxAllowedSpeed);
 
-            // Reibung
             if (!input.up && !input.down) {
                 car.speed *= (1 - car.friction * deltaTime);
                 if (Math.abs(car.speed) < 0.1) car.speed = 0;
             }
 
-            // 3. Lenkung anwenden (nur wenn Auto sich bewegt)
             if (Math.abs(car.speed) > 0.1) {
                 const turnSpeed = car.turnRate * (car.speed / car.maxSpeed) * deltaTime;
                 if (input.left) {
@@ -386,28 +454,21 @@
                 }
             }
 
-            // 4. Bewegung anwenden
             const dx = Math.sin(car.rotation) * car.speed * deltaTime;
             const dy = -Math.cos(car.rotation) * car.speed * deltaTime;
 
             car.x += dx;
             car.y += dy;
 
-            // 5. Kollisionserkennung (mit Wänden)
-            if (car.x < 0 || car.x > CANVAS_WIDTH || car.y < 0 || car.y > CANVAS_HEIGHT) {
-                car.speed = -car.speed * 0.5; // Auto prallt ab
-                car.x = Math.max(0, Math.min(CANVAS_WIDTH, car.x));
-                car.y = Math.max(0, Math.min(CANVAS_HEIGHT, car.y));
+            // Wandbegrenzung (zusätzlich zum Clamping im getTerrainAt)
+            if (car.x < 0 || car.x > INITIAL_CANVAS_SIZE || car.y < 0 || car.y > INITIAL_CANVAS_SIZE) {
+                car.speed = -car.speed * 0.5;
+                car.x = Math.max(0, Math.min(INITIAL_CANVAS_SIZE, car.x));
+                car.y = Math.max(0, Math.min(INITIAL_CANVAS_SIZE, car.y));
             }
-
-            // 6. Siegbedingung (Beispiel: Überqueren der Ziellinie - Hier nur Platzhalter)
-            // if (car.y < 10 && car.x > 100 && car.x < 400) {
-            //     showMessage(`SPIELER ${car.player} GEWINNT!`);
-            // }
         }
 
         function updateGame(deltaTime) {
-            // Update beide Autos mit ihren jeweiligen Eingaben
             updateCar(car1, INPUT.p1, deltaTime);
             updateCar(car2, INPUT.p2, deltaTime);
         }
@@ -417,17 +478,16 @@
         function gameLoop(timestamp) {
             if (!isGameRunning) return;
 
-            const deltaTime = (timestamp - lastUpdateTime) / 1000 * 60; // Delta Time normalisiert auf 60 FPS
+            const deltaTime = (timestamp - lastUpdateTime) / 1000 * 60;
             lastUpdateTime = timestamp;
 
             // 1. Logik-Update
             updateGame(deltaTime);
 
             // 2. Rendering
-            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            ctx.clearRect(0, 0, INITIAL_CANVAS_SIZE, INITIAL_CANVAS_SIZE);
             drawMap();
             
-            // Beide Autos zeichnen
             drawCar(car1);
             drawCar(car2);
 
@@ -442,25 +502,30 @@
                 gameMap = await loadMapFromSvg(svgString);
                 
                 // Setze Startposition für beide Autos
-                car1.x = CANVAS_WIDTH / 2 - 40;
-                car1.y = CANVAS_HEIGHT / 2;
+                car1.x = INITIAL_CANVAS_SIZE / 2 - 40;
+                car1.y = INITIAL_CANVAS_SIZE / 2;
                 car1.speed = 0;
                 car1.rotation = 0;
                 
-                car2.x = CANVAS_WIDTH / 2 + 40;
-                car2.y = CANVAS_HEIGHT / 2;
+                car2.x = INITIAL_CANVAS_SIZE / 2 + 40;
+                car2.y = INITIAL_CANVAS_SIZE / 2;
                 car2.speed = 0;
                 car2.rotation = 0;
 
-
                 if (!isGameRunning) {
-                    // Verstecke das Setup-Panel (Haupt-Feature-Fix)
+                    // 1. Vollbildmodus aktivieren (mit Fehlerbehandlung)
+                    goFullscreen(); 
+                    
+                    // 2. Setup-Panel verstecken
                     setupPanel.classList.add('hidden'); 
                     
+                    // 3. Canvas anzeigen
+                    canvas.style.display = 'block';
+
                     isGameRunning = true;
                     lastUpdateTime = performance.now();
                     requestAnimationFrame(gameLoop);
-                    console.log("Spiel gestartet! Setup-Menü versteckt.");
+                    console.log("Spiel gestartet und Vollbildmodus versucht.");
                 }
             } catch (error) {
                 console.error("Fehler beim Laden der Karte:", error);
@@ -468,8 +533,7 @@
             }
         };
 
-
-        // --- Eingabebehandlung (PC) ---
+        // --- Eingabebehandlung ---
 
         function handleKeyDown(e) {
             if (e.repeat) return;
