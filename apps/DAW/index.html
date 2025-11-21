@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WebBand Studio</title>
+    <style>
+        :root {
+            --bg-body: #1e1e1e;
+            --bg-header: #2c2c2c;
+            --bg-track: #252525;
+            --wood-dark: #3e2723;
+            --wood-light: #5d4037;
+            --lcd-bg: #111;
+            --lcd-text: #00ffcc;
+            --accent-blue: #007aff;
+            --accent-green: #34c759;
+            --accent-orange: #ff9500;
+            --grid-line: #3a3a3a;
+            --grid-beat: #555;
+            --text-primary: #ddd;
+        }
+
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-body);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- HEADER (Wood panels & Metal) --- */
+        header {
+            height: 50px;
+            background: linear-gradient(to bottom, #444, #2c2c2c);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            border-bottom: 2px solid #111;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            position: relative;
+            z-index: 20;
+        }
+        
+        /* Wood trim on sides */
+        header::before, header::after {
+            content: ''; position: absolute; top: 0; bottom: 0; width: 15px;
+            background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiM0ZTM0MmUiLz48L3N2Zz4=');
+            background-color: var(--wood-dark);
+            border-right: 1px solid #222;
+        }
+        header::before { left: 0; }
+        header::after { right: 0; border-left: 1px solid #222; border-right: none; }
+
+        .controls-left, .controls-right {
+            display: flex; gap: 15px; margin-left: 20px; align-items: center; z-index: 2;
+        }
+        .controls-right { margin-right: 20px; }
+
+        /* Transport Buttons */
+        .btn-transport {
+            background: transparent; border: none; color: #ccc; cursor: pointer;
+            transition: transform 0.1s, color 0.2s;
+        }
+        .btn-transport:hover { color: white; }
+        .btn-transport:active { transform: scale(0.9); }
+        .btn-record { color: #ff3b30; }
+        
+        /* LCD Display */
+        .lcd-display {
+            background: var(--lcd-bg);
+            border: 2px solid #555;
+            border-radius: 6px;
+            padding: 2px 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+            font-family: 'Courier New', monospace;
+            color: var(--lcd-text);
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);
+            height: 34px;
+        }
+        
+        .lcd-section { text-align: center; }
+        .lcd-label { font-size: 0.6rem; color: #666; display: block; margin-bottom: -2px;}
+        .lcd-value { font-size: 1.1rem; font-weight: bold; cursor: ns-resize; }
+
+        /* --- MAIN ARRANGEMENT VIEW --- */
+        .arrangement-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #1a1a1a;
+            position: relative;
+        }
+
+        /* Timeline Ruler */
+        .ruler {
+            height: 25px;
+            background: #222;
+            border-bottom: 1px solid #000;
+            margin-left: 140px; /* Offset for track headers */
+            display: flex;
+            align-items: flex-end;
+            position: relative;
+        }
+        .ruler-mark {
+            flex: 1; border-left: 1px solid #444; height: 10px;
+            font-size: 0.7rem; color: #888; padding-left: 4px;
+        }
+
+        /* Scrollable Area */
+        .tracks-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Track Row Generic */
+        .track-row {
+            display: flex;
+            height: 70px;
+            border-bottom: 1px solid #111;
+            background: var(--bg-track);
+        }
+        
+        .track-header {
+            width: 140px;
+            background: linear-gradient(to bottom, #3a3a3a, #2a2a2a);
+            border-right: 1px solid #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 5px 10px;
+            position: relative;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.3);
+            z-index: 5;
+        }
+
+        .track-icon {
+            width: 30px; height: 30px; background: #555; border-radius: 4px;
+            margin-bottom: 5px; display: flex; align-items: center; justify-content: center;
+        }
+        .track-name { font-size: 0.8rem; font-weight: bold; color: #fff; }
+        
+        .track-controls { display: flex; gap: 5px; margin-top: 5px; }
+        .mini-btn {
+            width: 18px; height: 18px; font-size: 0.6rem; border: 1px solid #555;
+            background: #333; color: #888; border-radius: 3px; cursor: pointer;
+        }
+        .mini-btn.mute.active { background: #007aff; color: white; border-color: #007aff; }
+        .mini-btn.solo.active { background: #ff9500; color: white; border-color: #ff9500; }
+
+        .track-lane {
+            flex: 1;
+            position: relative;
+            background-image: 
+                linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-beat) 1px, transparent 1px);
+            background-size: calc(100% / 16) 100%, calc(100% / 4) 100%; /* 16 steps */
+            display: flex;
+            align-items: center;
+        }
+
+        /* --- DRUM LANE SPECIFIC --- */
+        .drum-lane .note-cell {
+            height: 100%; flex: 1; border-right: 1px solid rgba(255,255,255,0.05);
+            cursor: pointer; position: relative;
+        }
+        .drum-lane .note-cell:hover { background: rgba(255,255,255,0.05); }
+        .drum-lane .note-cell.active {
+            background: var(--accent-blue);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);
+            border-radius: 2px;
+            margin: 2px;
+            height: calc(100% - 4px);
+        }
+
+        /* --- PIANO ROLL (MELODY) SPECIFIC --- */
+        .piano-roll-container {
+            display: flex; width: 100%; height: 300px; /* Taller for piano roll */
+            background: #151515;
+        }
+        .piano-keys {
+            width: 140px; background: #111; border-right: 1px solid #000;
+            display: flex; flex-direction: column;
+            position: relative; z-index: 5;
+        }
+        .piano-key {
+            flex: 1; border-bottom: 1px solid #333; position: relative;
+            background: #fff;
+        }
+        .piano-key.black {
+            background: #000; height: 60%; width: 60%; border: 1px solid #333; border-left: none;
+            position: absolute; z-index: 2; top: -30%;
+        }
+        .piano-key span {
+            position: absolute; right: 5px; bottom: 2px; font-size: 0.6rem; color: #aaa;
+        }
+
+        .piano-grid {
+            flex: 1; display: flex; flex-direction: column;
+            position: relative;
+            background-image: 
+                linear-gradient(90deg, #222 1px, transparent 1px),
+                linear-gradient(90deg, #333 1px, transparent 1px);
+            background-size: calc(100% / 16) 100%, calc(100% / 4) 100%;
+        }
+        
+        .piano-row {
+            flex: 1; display: flex; border-bottom: 1px solid #222;
+        }
+        .piano-cell {
+            flex: 1; border-right: 1px solid #1a1a1a; cursor: pointer;
+        }
+        .piano-cell:hover { background: rgba(255,255,255,0.05); }
+        .piano-cell.active {
+            background: var(--accent-green);
+            border: 1px solid #66ff88;
+            border-radius: 2px;
+            opacity: 0.9;
+        }
+
+        /* Playhead */
+        .playhead {
+            position: absolute; top: 0; bottom: 0; width: 2px;
+            background: red; box-shadow: 0 0 5px red;
+            z-index: 10; pointer-events: none;
+            transition: left 0.1s linear;
+            left: 140px;
+        }
+
+        /* --- BOTTOM KEYBOARD --- */
+        .bottom-keyboard {
+            height: 140px;
+            background: #222;
+            border-top: 4px solid #111;
+            display: flex;
+            justify-content: center;
+            padding: 10px 0;
+            position: relative;
+        }
+        .bk-key {
+            width: 50px; background: white; height: 100%;
+            border-radius: 0 0 5px 5px; margin: 0 2px;
+            position: relative; cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+        .bk-key.black {
+            width: 30px; background: black; height: 60%;
+            position: absolute; margin-left: -15px; z-index: 2;
+            box-shadow: 1px 1px 5px rgba(0,0,0,0.8);
+        }
+        .bk-key:active, .bk-key.pressed { transform: translateY(2px); background: #ddd; }
+        .bk-key.black:active, .bk-key.black.pressed { background: #333; }
+
+        /* Select Input Custom */
+        .inst-select {
+            background: #333; color: white; border: 1px solid #111;
+            border-radius: 4px; padding: 5px; font-size: 0.8rem;
+        }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="controls-left">
+        <div class="brand" style="color: #aaa; font-weight: bold;">WebBand</div>
+        <button class="btn-transport" id="btnRewind">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11 19V5l-9 7 9 7zm11 0V5l-9 7 9 7z"/></svg>
+        </button>
+        <button class="btn-transport" id="btnPlay">
+            <svg id="iconPlay" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg id="iconStop" style="display:none" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+        </button>
+        <button class="btn-transport btn-record">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+        </button>
+    </div>
+
+    <div class="lcd-display">
+        <div class="lcd-section">
+            <span class="lcd-label">BAR</span>
+            <span class="lcd-value" id="barDisplay">1</span>
+        </div>
+        <div class="lcd-section">
+            <span class="lcd-label">BEAT</span>
+            <span class="lcd-value" id="beatDisplay">1</span>
+        </div>
+        <div class="lcd-section" style="border-left: 1px solid #444; padding-left: 15px;">
+            <span class="lcd-label">TEMPO</span>
+            <span class="lcd-value" id="bpmDisplay">120</span>
+        </div>
+    </div>
+
+    <div class="controls-right">
+        <select id="instrumentSelect" class="inst-select">
+            <option value="grand">Grand Piano</option>
+            <option value="synth" selected>Classic Synth</option>
+            <option value="saw">Dirty Bass</option>
+        </select>
+        <div id="volMeter" style="width:10px; height:20px; background:#333; border-radius:2px; overflow:hidden; display:flex; align-items:flex-end;">
+            <div id="volBar" style="width:100%; height:0%; background:#34c759; transition: height 0.05s;"></div>
+        </div>
+    </div>
+</header>
+
+<div class="arrangement-view" id="arrangementView">
+    <div class="ruler">
+        <!-- Generated by JS -->
+    </div>
+    
+    <div class="playhead" id="playhead"></div>
+
+    <div class="tracks-container">
+        <!-- DRUMS (KICK) -->
+        <div class="track-row">
+            <div class="track-header">
+                <div class="track-icon" style="background:#ff3b30;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </div>
+                <span class="track-name">Smart Drums</span>
+                <div class="track-controls">
+                    <button class="mini-btn mute" onclick="toggleMute(0, this)">M</button>
+                    <button class="mini-btn solo" onclick="toggleSolo(0, this)">S</button>
+                </div>
+            </div>
+            <div class="track-lane drum-lane" id="drumLaneKick"></div>
+        </div>
+
+        <!-- DRUMS (SNARE) -->
+        <div class="track-row">
+            <div class="track-header" style="border-top:none; height: 50px; padding-left: 20px;">
+                <span class="track-name" style="color:#888; font-size:0.7rem;">Snare</span>
+            </div>
+            <div class="track-lane drum-lane" id="drumLaneSnare"></div>
+        </div>
+        
+         <!-- DRUMS (HiHat) -->
+         <div class="track-row">
+            <div class="track-header" style="border-top:none; height: 50px; padding-left: 20px;">
+                <span class="track-name" style="color:#888; font-size:0.7rem;">Hi-Hat</span>
+            </div>
+            <div class="track-lane drum-lane" id="drumLaneHat"></div>
+        </div>
+
+        <!-- PIANO ROLL TRACK -->
+        <div class="piano-roll-container">
+            <div class="track-header" style="height: 100%; justify-content: flex-start; padding-top: 20px;">
+                <div class="track-icon" style="background:#34c759;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM4 18V6h2.5v6h1V6H10v6h1V6h2.5v6h1V6H17v6h1V6H20v12z"/></svg>
+                </div>
+                <span class="track-name">Melody</span>
+                <div class="track-controls">
+                    <button class="mini-btn mute" onclick="toggleMute(3, this)">M</button>
+                    <button class="mini-btn solo" onclick="toggleSolo(3, this)">S</button>
+                </div>
+            </div>
+            
+            <div style="flex:1; display:flex;">
+                <!-- Piano Keys Axis -->
+                <div class="piano-keys" id="pianoKeysAxis">
+                    <!-- Generated -->
+                </div>
+                <!-- Grid -->
+                <div class="piano-grid" id="pianoGrid">
+                    <!-- Generated -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="bottom-keyboard" id="liveKeyboard">
+    <!-- Generated -->
+</div>
+
+<script>
+/**
+ * WEBBAND STUDIO ENGINE
+ */
+
+// --- Config ---
+const STEPS = 16;
+const BPM = 120;
+const SCALE = ['C4', 'B3', 'A#3', 'A3', 'G#3', 'G3', 'F#3', 'F3', 'E3', 'D#3', 'D3', 'C#3', 'C3'];
+const FREQS = {
+    'C4': 261.63, 'B3': 246.94, 'A#3': 233.08, 'A3': 220.00, 
+    'G#3': 207.65, 'G3': 196.00, 'F#3': 185.00, 'F3': 174.61, 
+    'E3': 164.81, 'D#3': 155.56, 'D3': 146.83, 'C#3': 138.59, 'C3': 130.81
+};
+
+// State
+let isPlaying = false;
+let currentStep = 0;
+let nextNoteTime = 0.0;
+let audioCtx;
+let masterGain;
+let tempo = 120;
+let trackMutes = [false, false, false, false]; // Kick, Snare, Hat, Synth
+let trackSolos = [false, false, false, false];
+let currentInstrument = 'synth';
+
+// Data
+// Drums: Simple Array [Step] = Boolean
+let drumData = {
+    kick: Array(STEPS).fill(false),
+    snare: Array(STEPS).fill(false),
+    hat: Array(STEPS).fill(false)
+};
+// Synth: 2D Array [NoteIndex][Step] = Boolean
+let synthData = Array(SCALE.length).fill().map(() => Array(STEPS).fill(false));
+
+// Initialize default pattern
+drumData.kick[0] = true; drumData.kick[8] = true;
+drumData.snare[4] = true; drumData.snare[12] = true;
+drumData.hat = drumData.hat.map((_,i) => i%2===0);
+
+// --- Audio Engine ---
+function initAudio() {
+    if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AC();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.4;
+        masterGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playSound(type, time) {
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    gain.connect(masterGain);
+
+    if (type === 'kick') {
+        osc.frequency.setValueAtTime(150, time);
+        osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+        gain.gain.setValueAtTime(1, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+        osc.connect(gain); osc.start(time); osc.stop(time + 0.5);
+        visualizeHit();
+    } 
+    else if (type === 'snare') {
+        const bufferSize = audioCtx.sampleRate * 0.1;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for(let i=0; i<bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass'; filter.frequency.value = 800;
+        noise.connect(filter); filter.connect(gain);
+        gain.gain.setValueAtTime(0.8, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+        noise.start(time);
+        visualizeHit();
+    }
+    else if (type === 'hat') {
+        const bufferSize = audioCtx.sampleRate * 0.05;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for(let i=0; i<bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass'; filter.frequency.value = 4000;
+        noise.connect(filter); filter.connect(gain);
+        gain.gain.setValueAtTime(0.3, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+        noise.start(time);
+    }
+}
+
+function playNote(freq, time, duration=0.3) {
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    // Instrument Settings
+    if(currentInstrument === 'synth') {
+        osc.type = 'triangle';
+    } else if(currentInstrument === 'saw') {
+        osc.type = 'sawtooth';
+    } else {
+        osc.type = 'sine'; // Pianoish
+    }
+
+    osc.frequency.setValueAtTime(freq, time);
+    
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(0.6, time + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
+    
+    osc.connect(gain);
+    gain.connect(masterGain);
+    osc.start(time);
+    osc.stop(time + duration + 0.1);
+    visualizeHit();
+}
+
+function visualizeHit() {
+    const bar = document.getElementById('volBar');
+    bar.style.height = '100%';
+    setTimeout(() => bar.style.height = '0%', 100);
+}
+
+// --- Scheduler ---
+function schedule() {
+    const lookahead = 25.0;
+    const scheduleAheadTime = 0.1;
+    
+    while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
+        runStep(currentStep, nextNoteTime);
+        const secPerStep = 60.0 / tempo / 4;
+        nextNoteTime += secPerStep;
+        currentStep = (currentStep + 1) % STEPS;
+    }
+    setTimeout(schedule, lookahead);
+}
+
+function runStep(step, time) {
+    // UI Update
+    requestAnimationFrame(() => {
+        const headerWidth = 140;
+        const laneWidth = document.getElementById('drumLaneKick').offsetWidth;
+        const stepPx = laneWidth / STEPS;
+        const leftPos = headerWidth + (step * stepPx);
+        document.getElementById('playhead').style.left = leftPos + 'px';
+        
+        document.getElementById('barDisplay').innerText = Math.floor(step/4) + 1;
+        document.getElementById('beatDisplay').innerText = (step%4) + 1;
+    });
+
+    // Mute/Solo Logic
+    const anySolo = trackSolos.includes(true);
+    
+    // Kick (Track 0)
+    if ((!trackMutes[0] && (!anySolo || trackSolos[0])) && drumData.kick[step]) playSound('kick', time);
+    // Snare (Track 1)
+    if ((!trackMutes[1] && (!anySolo || trackSolos[1])) && drumData.snare[step]) playSound('snare', time);
+    // Hat (Track 2)
+    if ((!trackMutes[2] && (!anySolo || trackSolos[2])) && drumData.hat[step]) playSound('hat', time);
+    
+    // Synth (Track 3)
+    if (!trackMutes[3] && (!anySolo || trackSolos[3])) {
+        for(let n=0; n<SCALE.length; n++) {
+            if(synthData[n][step]) {
+                playNote(FREQS[SCALE[n]], time);
+            }
+        }
+    }
+}
+
+// --- UI Generators ---
+function initUI() {
+    // RULER
+    const ruler = document.querySelector('.ruler');
+    for(let i=1; i<=4; i++) {
+        const mark = document.createElement('div');
+        mark.className = 'ruler-mark';
+        mark.innerText = i;
+        ruler.appendChild(mark);
+        // Add smaller subdivisions visually via CSS on .ruler-mark
+    }
+
+    // DRUM LANES
+    renderDrumLane('drumLaneKick', drumData.kick);
+    renderDrumLane('drumLaneSnare', drumData.snare);
+    renderDrumLane('drumLaneHat', drumData.hat);
+
+    // PIANO ROLL
+    const keysAxis = document.getElementById('pianoKeysAxis');
+    const grid = document.getElementById('pianoGrid');
+
+    SCALE.forEach((note, rowIdx) => {
+        // Axis Key
+        const k = document.createElement('div');
+        k.className = note.includes('#') ? 'piano-key black' : 'piano-key';
+        if(note.includes('#')) {
+           // Adjust positioning for black keys
+           k.style.top = "-10px";
+        } else {
+           k.innerHTML = `<span>${note}</span>`;
+        }
+        keysAxis.appendChild(k);
+
+        // Grid Row
+        const row = document.createElement('div');
+        row.className = 'piano-row';
+        for(let s=0; s<STEPS; s++) {
+            const cell = document.createElement('div');
+            cell.className = 'piano-cell';
+            if(synthData[rowIdx][s]) cell.classList.add('active');
+            
+            cell.onmousedown = () => {
+                synthData[rowIdx][s] = !synthData[rowIdx][s];
+                cell.classList.toggle('active');
+                if(synthData[rowIdx][s]) playNote(FREQS[note], 0);
+            };
+            // Simple drag paint support
+            cell.onmouseenter = (e) => {
+                if(e.buttons === 1) {
+                    synthData[rowIdx][s] = true;
+                    cell.classList.add('active');
+                }
+            };
+            row.appendChild(cell);
+        }
+        grid.appendChild(row);
+    });
+
+    // LIVE KEYBOARD
+    const liveKb = document.getElementById('liveKeyboard');
+    // C3 to C5
+    const liveNotes = [
+        {n:'C3',t:'w'}, {n:'C#3',t:'b'}, {n:'D3',t:'w'}, {n:'D#3',t:'b'}, {n:'E3',t:'w'},
+        {n:'F3',t:'w'}, {n:'F#3',t:'b'}, {n:'G3',t:'w'}, {n:'G#3',t:'b'}, {n:'A3',t:'w'}, {n:'A#3',t:'b'}, {n:'B3',t:'w'},
+        {n:'C4',t:'w'}
+    ];
+    
+    let marginOffset = 0;
+    liveNotes.forEach(n => {
+        const key = document.createElement('div');
+        if(n.t === 'w') {
+            key.className = 'bk-key';
+        } else {
+            key.className = 'bk-key black';
+            key.style.left = (marginOffset - 15) + 'px';
+        }
+        
+        key.onmousedown = () => {
+            key.classList.add('pressed');
+            playNote(FREQS[n.n] || 261, 0, 0.5);
+        };
+        key.onmouseup = () => key.classList.remove('pressed');
+        key.onmouseleave = () => key.classList.remove('pressed');
+        
+        // Touch
+        key.ontouchstart = (e) => { e.preventDefault(); key.classList.add('pressed'); playNote(FREQS[n.n] || 261, 0, 0.5); };
+        key.ontouchend = (e) => { e.preventDefault(); key.classList.remove('pressed'); };
+
+        liveKb.appendChild(key);
+        if(n.t === 'w') marginOffset += 54; // width + margin
+    });
+}
+
+function renderDrumLane(id, dataArray) {
+    const container = document.getElementById(id);
+    container.innerHTML = '';
+    for(let i=0; i<STEPS; i++) {
+        const cell = document.createElement('div');
+        cell.className = `note-cell ${dataArray[i] ? 'active' : ''}`;
+        cell.onclick = () => {
+            dataArray[i] = !dataArray[i];
+            cell.classList.toggle('active');
+            // If turning on, preview sound
+            if(dataArray[i]) {
+                if(id.includes('Kick')) playSound('kick', 0);
+                if(id.includes('Snare')) playSound('snare', 0);
+                if(id.includes('Hat')) playSound('hat', 0);
+            }
+        };
+        container.appendChild(cell);
+    }
+}
+
+// --- Interaction ---
+document.getElementById('btnPlay').addEventListener('click', () => {
+    if(isPlaying) {
+        isPlaying = false;
+        document.getElementById('iconPlay').style.display = 'block';
+        document.getElementById('iconStop').style.display = 'none';
+    } else {
+        initAudio();
+        isPlaying = true;
+        currentStep = 0;
+        nextNoteTime = audioCtx.currentTime;
+        schedule();
+        document.getElementById('iconPlay').style.display = 'none';
+        document.getElementById('iconStop').style.display = 'block';
+    }
+});
+
+document.getElementById('btnRewind').addEventListener('click', () => {
+    currentStep = 0;
+    document.getElementById('playhead').style.left = '140px';
+    document.getElementById('barDisplay').innerText = '1';
+    document.getElementById('beatDisplay').innerText = '1';
+});
+
+document.getElementById('instrumentSelect').addEventListener('change', (e) => {
+    currentInstrument = e.target.value;
+});
+
+function toggleMute(trackIdx, btn) {
+    trackMutes[trackIdx] = !trackMutes[trackIdx];
+    btn.classList.toggle('active');
+}
+
+function toggleSolo(trackIdx, btn) {
+    // Disable other solos logic omitted for brevity, assume additive solo
+    trackSolos[trackIdx] = !trackSolos[trackIdx];
+    btn.classList.toggle('active');
+    
+    // Visual update needed for full Solo behavior (graying out others)
+    // Keeping it simple for this file size
+}
+
+// Init
+initUI();
+
+</script>
+</body>
+</html>
