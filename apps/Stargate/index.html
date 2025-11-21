@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Stargate DHD Simulator</title>
+    <style>
+        /* CSS-STILE */
+        :root {
+            --gate-color: #2e8b57; /* Dunkelgrün/Waldgrün für das Gate */
+            --chevron-color: #ffd700; /* Goldgelb */
+            --activated-color: #4cff4c; /* Helles Grün für Aktivierung */
+            --wormhole-start: #00bfff; /* Anfangsblau für den Ereignishorizont */
+            --wormhole-end: #00008b; /* Dunkelblau */
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #000;
+            color: var(--activated-color);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: row;
+            gap: 40px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        /* --- GATE / MONITOR AREA --- */
+        .gate-area {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .monitor {
+            width: 100%;
+            max-width: 600px;
+            background-color: #111;
+            border: 5px solid var(--gate-color);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 20px var(--gate-color);
+            margin-bottom: 20px;
+            position: relative;
+            min-height: 400px;
+        }
+
+        .status-display {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .gate-ring {
+            width: 100%;
+            padding-bottom: 100%; /* Erzeugt eine quadratische Fläche */
+            position: relative;
+            margin: 0 auto;
+        }
+
+        .gate-inner {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            border: 4px solid var(--gate-color);
+            border-radius: 50%;
+            box-sizing: border-box;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Chevrons um den Ring herum */
+        .chevron {
+            position: absolute;
+            width: 50px;
+            height: 20px;
+            background-color: var(--chevron-color);
+            clip-path: polygon(0 0, 100% 0, 80% 100%, 20% 100%);
+            transform-origin: center center;
+            transition: background-color 0.5s, box-shadow 0.5s, transform 0.5s;
+            z-index: 10;
+        }
+        .chevron-locked {
+            background-color: var(--activated-color);
+            box-shadow: 0 0 15px var(--activated-color);
+            transform: scale(1.1) translateY(5px);
+        }
+
+        /* Positionierung der 9 Chevrons (Top-Positionen) */
+        .chevron:nth-child(1) { top: 0; left: 50%; transform: translate(-50%, -50%); }
+        .chevron:nth-child(2) { top: 12%; right: 12%; transform: rotate(45deg); }
+        .chevron:nth-child(3) { bottom: 12%; right: 12%; transform: rotate(135deg); }
+        .chevron:nth-child(4) { bottom: 0; left: 50%; transform: translate(-50%, 50%) rotate(180deg); }
+        .chevron:nth-child(5) { bottom: 12%; left: 12%; transform: rotate(-135deg); }
+        .chevron:nth-child(6) { top: 12%; left: 12%; transform: rotate(-45deg); }
+        .chevron:nth-child(7) { top: 30%; right: -5%; transform: rotate(90deg); } /* Zusätzliche Chevrons */
+        .chevron:nth-child(8) { top: 70%; right: -5%; transform: rotate(90deg); }
+        .chevron:nth-child(9) { top: 50%; right: 0; transform: translate(50%, -50%) rotate(90deg); } /* Das Haupt-Chevron (9.) */
+
+        /* Ereignishorizont (Wurmloch) */
+        .wormhole {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle at center, var(--wormhole-start) 0%, var(--wormhole-end) 100%);
+            opacity: 0;
+            transition: opacity 1s;
+            filter: blur(5px);
+            animation: warp 0.5s infinite alternate;
+        }
+        .wormhole-active {
+            opacity: 1;
+        }
+
+        @keyframes warp {
+            from { transform: scale(1.0); }
+            to { transform: scale(0.98); }
+        }
+
+        /* --- CONTROLS / ADDRESS BOOK AREA --- */
+        .controls-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .dial-controls, .address-book-controls {
+            background-color: #111;
+            border: 2px solid var(--chevron-color);
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 0 10px var(--chevron-color);
+        }
+
+        .keypad {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .symbol-button {
+            background-color: #333;
+            color: var(--activated-color);
+            border: 1px solid var(--gate-color);
+            padding: 10px 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .symbol-button:hover {
+            background-color: #555;
+        }
+        .symbol-button:active {
+            transform: scale(0.98);
+        }
+
+        #dial-button {
+            grid-column: span 4;
+            background-color: #8b0000;
+            color: white;
+            padding: 15px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        #dial-button:hover {
+            background-color: #a52a2a;
+        }
+
+        /* Address Book Styles */
+        #address-list {
+            list-style: none;
+            padding: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            border-top: 1px solid var(--gate-color);
+            margin-top: 10px;
+        }
+
+        #address-list li {
+            padding: 8px;
+            border-bottom: 1px dashed #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #address-list li:hover {
+            background-color: #222;
+        }
+        #address-list li span {
+            font-weight: bold;
+            color: var(--chevron-color);
+        }
+
+        .ab-button {
+            background-color: #008b8b;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.9em;
+            margin-left: 5px;
+        }
+        .ab-button:hover {
+            background-color: #00ced1;
+        }
+
+        .dataflow-section {
+            background-color: #111;
+            border: 2px solid var(--activated-color);
+            padding: 10px;
+            margin-top: 20px;
+            text-align: center;
+            border-radius: 4px;
+        }
+        #dataflow-status {
+            font-size: 0.9em;
+            color: orange;
+        }
+    </style>
+</head>
+<body>
+
+    <audio id="sound-dial" src="dial.mp3" preload="auto"></audio>
+    <audio id="sound-lock" src="lock.mp3" preload="auto"></audio>
+    <audio id="sound-whoosh" src="whoosh.mp3" preload="auto"></audio>
+    <div class="container">
+        <div class="gate-area">
+            <div class="monitor">
+                <div class="status-display" id="status-display">Wähle eine Adresse (6 oder 7 Symbole)</div>
+                <div class="gate-ring">
+                    <div class="chevron" data-chevron="1"></div>
+                    <div class="chevron" data-chevron="2"></div>
+                    <div class="chevron" data-chevron="3"></div>
+                    <div class="chevron" data-chevron="4"></div>
+                    <div class="chevron" data-chevron="5"></div>
+                    <div class="chevron" data-chevron="6"></div>
+                    <div class="chevron" data-chevron="7"></div>
+                    <div class="chevron" data-chevron="8"></div>
+                    <div class="chevron" data-chevron="9"></div>
+
+                    <div class="gate-inner">
+                        <div class="wormhole" id="wormhole"></div>
+                    </div>
+                </div>
+                <p style="text-align: center; margin-top: 15px;">**Aktuelle Sequenz:** <span id="current-sequence"></span></p>
+
+                <div class="dataflow-section">
+                    **Dataflow Status:**
+                    <p id="dataflow-status">Datenleitung: **Deaktiviert**</p>
+                    <button id="dataflow-toggle" class="ab-button" style="background-color: #00bfff;">Dataflow Umschalten</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-area">
+            <div class="dial-controls">
+                <h3>🌌 DHD Wählscheibe</h3>
+                <div class="keypad" id="keypad">
+                    </div>
+                <button id="dial-button">Adresse Anwählen</button>
+            </div>
+
+            <div class="address-book-controls">
+                <h3>📚 Adressbuch</h3>
+                <input type="text" id="new-address-name" placeholder="Name (z.B. Abydos)" style="width: calc(100% - 10px); margin-bottom: 5px;">
+                <input type="text" id="new-address-sequence" placeholder="Adresse (z.B. 1-5-10-12-20-25)" style="width: calc(100% - 10px); margin-bottom: 10px;">
+                <button id="add-address-button" class="ab-button" style="background-color: var(--gate-color); width: 100%;">Adresse Hinzufügen</button>
+
+                <ul id="address-list">
+                    </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // JAVASCRIPT LOGIK
+
+        // Konstanten und DOM-Elemente
+        const SYMBOLS_COUNT = 39;
+        const KEYPAD = document.getElementById('keypad');
+        const CURRENT_SEQUENCE_SPAN = document.getElementById('current-sequence');
+        const STATUS_DISPLAY = document.getElementById('status-display');
+        const DIAL_BUTTON = document.getElementById('dial-button');
+        const WORMHOLE = document.getElementById('wormhole');
+        const CHEVRONS = document.querySelectorAll('.chevron');
+        const ADDRESS_LIST = document.getElementById('address-list');
+        const ADD_ADDRESS_BUTTON = document.getElementById('add-address-button');
+        const NEW_ADDRESS_NAME_INPUT = document.getElementById('new-address-name');
+        const NEW_ADDRESS_SEQUENCE_INPUT = document.getElementById('new-address-sequence');
+        const DATAFLOW_STATUS = document.getElementById('dataflow-status');
+        const DATAFLOW_TOGGLE = document.getElementById('dataflow-toggle');
+        
+        // Sound-Elemente
+        const SOUND_DIAL = document.getElementById('sound-dial');
+        const SOUND_LOCK = document.getElementById('sound-lock');
+        const SOUND_WHOOSH = document.getElementById('sound-whoosh');
+
+        // State-Variablen
+        let currentSequence = []; // Gespeicherte Symbole (Nummern)
+        let isDialing = false;
+        let isWormholeActive = false;
+        let dataflowActive = false;
+        let addressBook = [
+            { name: "Erde/Alpha-Basis", sequence: [1, 5, 10, 15, 20, 25, 30] }, // 7 Symbole
+            { name: "Abydos", sequence: [1, 2, 3, 4, 5, 6] } // 6 Symbole (kürzer für einfaches Testen)
+        ];
+
+        // --- HILFSFUNKTIONEN ---
+
+        /** Spielt einen Sound ab. */
+        function playSound(audioElement) {
+            if (audioElement) {
+                audioElement.currentTime = 0; // Zurücksetzen, um schnelles Abspielen zu ermöglichen
+                audioElement.play().catch(e => console.error("Soundfehler:", e));
+            }
+        }
+
+        /** Erzeugt das DHD Keypad (39 Symbole). */
+        function createKeypad() {
+            KEYPAD.innerHTML = '';
+            for (let i = 1; i <= SYMBOLS_COUNT; i++) {
+                const button = document.createElement('button');
+                button.className = 'symbol-button';
+                button.textContent = i.toString().padStart(2, '0'); // z.B. 01, 02, ...
+                button.dataset.symbol = i;
+                button.onclick = () => selectSymbol(i);
+                KEYPAD.appendChild(button);
+            }
+        }
+
+        /** Zeigt die aktuelle Sequenz an. */
+        function updateSequenceDisplay() {
+            CURRENT_SEQUENCE_SPAN.textContent = currentSequence.join(' - ');
+        }
+
+        /** Setzt das Gate zurück. */
+        function resetGate() {
+            isDialing = false;
+            isWormholeActive = false;
+            currentSequence = [];
+            updateSequenceDisplay();
+            STATUS_DISPLAY.textContent = "Wähle eine Adresse (6 oder 7 Symbole)";
+            WORMHOLE.classList.remove('wormhole-active');
+            CHEVRONS.forEach(c => c.classList.remove('chevron-locked'));
+            DIAL_BUTTON.textContent = "Adresse Anwählen";
+            DIAL_BUTTON.disabled = false;
+            
+        }
+
+        // --- DHD LOGIK ---
+
+        /** Symbol wurde auf der Wählscheibe gedrückt. */
+        function selectSymbol(symbol) {
+            if (isDialing) return;
+
+            if (currentSequence.length < 7) {
+                currentSequence.push(symbol);
+                updateSequenceDisplay();
+                STATUS_DISPLAY.textContent = `Symbol ${currentSequence.length} / 7: ${symbol}`;
+                playSound(SOUND_DIAL);
+            }
+            if (currentSequence.length >= 7) {
+                STATUS_DISPLAY.textContent = "Maximale Symbole (7) erreicht. Anwählen drücken.";
+            }
+        }
+
+        /** Startet den Anwahlprozess. */
+        async function dialAddress() {
+            if (isDialing) return;
+            
+            const requiredSymbols = currentSequence.length === 6 || currentSequence.length === 7;
+            if (!requiredSymbols) {
+                STATUS_DISPLAY.textContent = "FEHLER: Es werden 6 oder 7 Symbole benötigt!";
+                return;
+            }
+
+            isDialing = true;
+            DIAL_BUTTON.textContent = "Wahl läuft...";
+            DIAL_BUTTON.disabled = true;
+            
+            STATUS_DISPLAY.textContent = `Starte Wählsequenz für ${currentSequence.length} Symbole...`;
+
+            // Chevrons sequenziell einrasten lassen
+            for (let i = 0; i < currentSequence.length; i++) {
+                const chevronIndex = i + 1;
+                const chevronElement = document.querySelector(`.chevron[data-chevron="${chevronIndex}"]`);
+
+                if (chevronElement) {
+                    STATUS_DISPLAY.textContent = `Chevron ${chevronIndex} eingerastet für Symbol: ${currentSequence[i]}`;
+                    chevronElement.classList.add('chevron-locked');
+                    playSound(SOUND_LOCK);
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // 1 Sekunde Pause
+                }
+            }
+
+            // Letztes Chevron (9.) für die Herkunftsadresse
+            const finalChevron = document.querySelector('.chevron[data-chevron="9"]');
+            finalChevron.classList.add('chevron-locked');
+            STATUS_DISPLAY.textContent = "Chevron 9 eingerastet! Wurmloch generieren...";
+            playSound(SOUND_WHOOSH);
+            
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Wurmloch aktivieren
+            WORMHOLE.classList.add('wormhole-active');
+            isWormholeActive = true;
+            
+            STATUS_DISPLAY.textContent = "💥 STABILISIERTER EREIGNISHORIZONT! 💥";
+            DIAL_BUTTON.textContent = "Verbindung Trennen (Reset)";
+            DIAL_BUTTON.disabled = false;
+            DIAL_BUTTON.onclick = resetGate; // Ändere die Funktion auf Reset
+        }
+
+        // --- ADRESSBUCH LOGIK ---
+
+        /** Rendert das Adressbuch. */
+        function renderAddressBook() {
+            ADDRESS_LIST.innerHTML = '';
+            addressBook.forEach((addr, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${addr.name}</span>
+                    <div>
+                        <button class="ab-button" onclick="loadAddress(${index})">Laden</button>
+                        <button class="ab-button" style="background-color: #8b0000;" onclick="deleteAddress(${index})">Löschen</button>
+                    </div>
+                `;
+                ADDRESS_LIST.appendChild(li);
+            });
+        }
+
+        /** Lädt eine Adresse aus dem Adressbuch in die Sequenz. */
+        function loadAddress(index) {
+            if (isDialing) return;
+            resetGate(); // Reset vor dem Laden
+            const addr = addressBook[index];
+            currentSequence = addr.sequence;
+            updateSequenceDisplay();
+            STATUS_DISPLAY.textContent = `Adresse **${addr.name}** geladen (${addr.sequence.length} Symbole). Jetzt Anwählen!`;
+        }
+
+        /** Löscht eine Adresse. */
+        function deleteAddress(index) {
+            addressBook.splice(index, 1);
+            renderAddressBook();
+        }
+
+        /** Fügt eine neue Adresse hinzu. */
+        function addAddress() {
+            const name = NEW_ADDRESS_NAME_INPUT.value.trim();
+            const seqString = NEW_ADDRESS_SEQUENCE_INPUT.value.trim();
+
+            if (!name || !seqString) {
+                alert("Name und Sequenz dürfen nicht leer sein!");
+                return;
+            }
+
+            // Sequenz parsen: "1-5-10-20" -> [1, 5, 10, 20]
+            const sequence = seqString.split('-').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0 && n <= SYMBOLS_COUNT);
+
+            if (sequence.length < 6 || sequence.length > 7) {
+                alert("Eine Adresse muss 6 oder 7 gültige Symbole (1-39) enthalten.");
+                return;
+            }
+
+            addressBook.push({ name, sequence });
+            renderAddressBook();
+            NEW_ADDRESS_NAME_INPUT.value = '';
+            NEW_ADDRESS_SEQUENCE_INPUT.value = '';
+        }
+
+        // --- DATAFLOW LOGIK ---
+
+        function toggleDataflow() {
+            dataflowActive = !dataflowActive;
+            if (dataflowActive) {
+                DATAFLOW_STATUS.innerHTML = 'Datenleitung: **Aktiviert** 🟢 (Hin- und Rückfluss)';
+                DATAFLOW_TOGGLE.textContent = 'Dataflow Umschalten (Aktiv)';
+            } else {
+                DATAFLOW_STATUS.innerHTML = 'Datenleitung: **Deaktiviert** 🔴';
+                DATAFLOW_TOGGLE.textContent = 'Dataflow Umschalten (Deaktiv)';
+            }
+        }
+
+
+        // --- INITIALISIERUNG ---
+
+        function init() {
+            createKeypad();
+            renderAddressBook();
+            DIAL_BUTTON.onclick = dialAddress;
+            ADD_ADDRESS_BUTTON.onclick = addAddress;
+            DATAFLOW_TOGGLE.onclick = toggleDataflow;
+            resetGate();
+        }
+
+        init();
+    </script>
+</body>
+</html>
