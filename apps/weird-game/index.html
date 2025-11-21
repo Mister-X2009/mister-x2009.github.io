@@ -1,1 +1,51 @@
-index.html
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Unit RTS Prototype</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Canvas rendering resolution is 256x256, displayed larger via CSS -->
+        <canvas id="gameCanvas" width="256" height="256"></canvas>
+        
+        <div id="ui-layer">
+            <div id="hud">
+                <div class="panel">
+                    <h3>Kontrolle</h3>
+                    <div class="color-picker">
+                        <!-- Farben: Rot, Grün, Blau, Gelb -->
+                        <button class="btn-color active" data-color="1" style="background:#ff4444;">R</button>
+                        <button class="btn-color" data-color="2" style="background:#44ff44;">G</button>
+                        <button class="btn-color" data-color="3" style="background:#4444ff;">B</button>
+                        <button class="btn-color" data-color="4" style="background:#ffff44;">Y</button>
+                    </div>
+                    <div class="actions">
+                        <button id="btn-spawn">Spawn (10px)</button>
+                        <button id="btn-recall">Rückruf</button>
+                    </div>
+                </div>
+                
+                <div class="panel">
+                    <h3>Status</h3>
+                    <div id="resource-display">Res: <span id="res-count">0</span> / <span id="res-cap">1000</span></div>
+                    <div class="legend">
+                        <small>R > G > B > Y > R</small>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>Debug / Export</h3>
+                    <button id="btn-export">Layer Export (PNG)</button>
+                    <label><input type="checkbox" id="chk-fow" checked> Fog of War</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
