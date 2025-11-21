@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>LocalStorage Viewer</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #121212;
+        color: #eee;
+        margin: 0;
+        padding: 20px;
+    }
+    h1 {
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+    .container {
+        max-width: 900px;
+        margin: auto;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+        background: #1e1e1e;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    th, td {
+        border-bottom: 1px solid #333;
+        padding: 10px;
+        font-size: 14px;
+        word-break: break-all;
+    }
+    th {
+        background: #272727;
+        text-align: left;
+    }
+    tr:last-child td {
+        border-bottom: none;
+    }
+    button {
+        cursor: pointer;
+        background: #3a8bff;
+        border: none;
+        padding: 7px 12px;
+        border-radius: 5px;
+        color: #fff;
+        font-size: 14px;
+    }
+    button:hover {
+        background: #1f6ee6;
+    }
+    .danger {
+        background: #d9534f;
+    }
+    .danger:hover {
+        background: #c9302c;
+    }
+    .inputRow {
+        margin-top: 25px;
+        display: flex;
+        gap: 10px;
+    }
+    .inputRow input {
+        padding: 8px;
+        flex: 1;
+        border-radius: 5px;
+        border: 1px solid #444;
+        background: #1b1b1b;
+        color: #eee;
+    }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>LocalStorage Viewer</h1>
+
+    <button onclick="clearAll()" class="danger">Alles löschen</button>
+    <button onclick="loadStorage()">Refresh</button>
+
+    <table id="storageTable">
+        <thead>
+            <tr>
+                <th>Key</th>
+                <th>Value</th>
+                <th>Aktion</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div class="inputRow">
+        <input id="newKey" type="text" placeholder="Neuer Key">
+        <input id="newVal" type="text" placeholder="Neuer Value">
+        <button onclick="addNew()">Hinzufügen</button>
+    </div>
+</div>
+
+<script>
+function loadStorage() {
+    const tableBody = document.querySelector("#storageTable tbody");
+    tableBody.innerHTML = "";
+
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        const val = localStorage.getItem(key);
+
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${key}</td>
+            <td>${val}</td>
+            <td><button class="danger" onclick="deleteKey('${key}')">Löschen</button></td>
+        `;
+        tableBody.appendChild(row);
+    }
+}
+
+function deleteKey(key) {
+    localStorage.removeItem(key);
+    loadStorage();
+}
+
+function clearAll() {
+    if (!confirm("Wirklich den gesamten Local Storage löschen?")) return;
+    localStorage.clear();
+    loadStorage();
+}
+
+function addNew() {
+    const key = document.getElementById("newKey").value.trim();
+    const val = document.getElementById("newVal").value.trim();
+
+    if (!key) {
+        alert("Key darf nicht leer sein.");
+        return;
+    }
+
+    localStorage.setItem(key, val);
+    document.getElementById("newKey").value = "";
+    document.getElementById("newVal").value = "";
+    loadStorage();
+}
+
+loadStorage();
+</script>
+</body>
+</html>
