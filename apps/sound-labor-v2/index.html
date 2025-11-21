@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Raumakustik Simulator Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #121212; color: #e0e0e0; font-family: system-ui, -apple-system, sans-serif; touch-action: none; }
+        
+        /* Canvas verhindert Browser-Standardgesten (wichtig für Zoom/Pan) */
+        canvas { display: block; touch-action: none; outline: none; }
+        
+        /* UI Overlay Styling */
+        .panel {
+            background: rgba(20, 20, 20, 0.9);
+            border: 1px solid #333;
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            transition: opacity 0.3s;
+        }
+        
+        .control-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #888; margin-bottom: 4px; }
+        input[type="range"] { width: 100%; accent-color: #3b82f6; height: 4px; background: #444; border-radius: 2px; appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: #3b82f6; border-radius: 50%; cursor: pointer; }
+        
+        select, button, input[type="file"] {
+            width: 100%;
+            background: #2a2a2a;
+            color: white;
+            border: 1px solid #444;
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        button:active { transform: scale(0.98); }
+        button:hover { background: #3a3a3a; border-color: #666; cursor: pointer; }
+        
+        /* Scrollbar custom */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+
+        /* Mobile Optimierungen */
+        @media (max-width: 768px) {
+            .panel { width: 200px; max-height: 60vh; font-size: 0.8rem; }
+            button { padding: 6px; }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="simCanvas"></canvas>
+
+    <!-- Linkes Panel: Tools -->
+    <div class="panel absolute top-4 left-4 w-72 max-h-[85vh] overflow-y-auto select-none z-10">
+        <h2 class="text-lg font-bold mb-4 text-blue-400 flex items-center gap-2">
+            <i class="fas fa-wave-square"></i> Akustik Labor v2
+        </h2>
+        
+        <div class="control-group">
+            <button id="btnAudioToggle" class="bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded shadow-lg flex items-center justify-center gap-2">
+                <i class="fas fa-play"></i> <span>Audio Starten</span>
+            </button>
+        </div>
+
+        <div class="control-group border-t border-gray-800 pt-4">
+            <label>Raum Elemente</label>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="addBlock('wall')"><i class="fas fa-square text-gray-400"></i> Wand</button>
+                <button onclick="addBlock('window')"><i class="fas fa-border-all text-blue-300"></i> Fenster</button>
+                <button onclick="addBlock('door')"><i class="fas fa-door-open text-yellow-700"></i> Tür</button>
+                <button onclick="clearAll()" class="bg-red-900/50 border-red-800 hover:bg-red-900"><i class="fas fa-trash"></i> Reset</button>
+            </div>
+        </div>
+
+        <div class="control-group border-t border-gray-800 pt-4">
+            <label>Soundquelle</label>
+            <select id="soundType">
+                <option value="osc">Synthesizer (Sawtooth)</option>
+                <option value="sine">Sinus Welle (Rein)</option>
+                <option value="noise">Rosa Rauschen (Test)</option>
+            </select>
+            <input type="file" id="audioFileInput" accept="audio/*" class="mt-2 text-xs opacity-70 hover:opacity-100">
+            
+            <div class="mt-3 space-y-2">
+                <div class="flex justify-between text-xs"><span>Volume</span><span id="volLabel">50%</span></div>
+                <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.5">
+            </div>
+        </div>
+
+        <div class="control-group border-t border-gray-800 pt-4">
+            <label>Visualisierung</label>
+            <div class="flex items-center justify-between mb-2 cursor-pointer p-1 hover:bg-white/5 rounded" onclick="toggleCheck('toggleRays')">
+                <span class="text-sm"><i class="fas fa-bolt text-yellow-500 w-5"></i> Reflexionen</span>
+                <input type="checkbox" id="toggleRays" checked class="pointer-events-none">
+            </div>
+            <div class="flex items-center justify-between cursor-pointer p-1 hover:bg-white/5 rounded" onclick="toggleCheck('toggleReverb')">
+                <span class="text-sm"><i class="fas fa-bullhorn text-purple-400 w-5"></i> Hall (Reverb)</span>
+                <input type="checkbox" id="toggleReverb" checked class="pointer-events-none">
+            </div>
+        </div>
+        
+        <div class="text-xs text-gray-600 mt-4 text-center">
+            <p><i class="fas fa-mouse"></i> Scrollen zum Zoomen</p>
+            <p><i class="fas fa-hand-pointer"></i> Drag Hintergrund = Pan</p>
+        </div>
+    </div>
+
+    <!-- Rechtes Panel: Eigenschaften -->
+    <div id="propertiesPanel" class="panel absolute top-4 right-4 w-64 hidden z-10 select-none transform transition-transform">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-sm font-bold text-yellow-400 uppercase tracking-wider">Eigenschaften</h3>
+            <button onclick="deselect()" class="w-auto p-1 px-2 text-xs bg-transparent border-none text-gray-500 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        
+        <p id="selectedLabel" class="text-sm font-bold text-white mb-4 border-b border-gray-700 pb-2">Objekt</p>
+
+        <div id="materialControls">
+            <div class="control-group">
+                <label>Material</label>
+                <select id="materialSelect">
+                    <option value="concrete">Beton (Massiv)</option>
+                    <option value="brick">Ziegelstein</option>
+                    <option value="wood">Holz (Warm)</option>
+                    <option value="glass">Glas (Reflektiv)</option>
+                    <option value="carpet">Vorhang/Schaum</option>
+                    <option value="open">Offen (Luft)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>Absorption: <span id="dampingVal" class="text-white"></span></label>
+                <input type="range" id="dampingSlider" min="0" max="1" step="0.05">
+                <div class="flex justify-between text-[10px] text-gray-600 mt-1">
+                    <span>Reflektiv</span><span>Absorbierend</span>
+                </div>
+            </div>
+
+            <div class="mt-6">
+                <button onclick="deleteSelected()" class="bg-red-600 hover:bg-red-500 text-white border-none py-2">
+                    <i class="fas fa-trash-alt mr-2"></i> Objekt Löschen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * --- CORE SYSTEM ---
+         */
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Kamera / Viewport Zustand
+        const camera = { x: 0, y: 0, zoom: 1.0 };
+        let width, height;
+
+        // Interaktions Zustand
+        const inputState = {
+            isDragging: false,
+            isPanning: false,
+            isResizing: false,
+            dragTarget: null,
+            resizeHandle: -1, // 0:TL, 1:TR, 2:BR, 3:BL
+            lastX: 0,
+            lastY: 0,
+            startPanX: 0,
+            startPanY: 0,
+            pinchDist: 0
+        };
+
+        // Audio Globals
+        let audioCtx = null;
+        let nodes = {}; // Speichert GainNodes, Panner etc.
+        let isAudioRunning = false;
+        let audioBuffer = null;
+
+        // Welt Objekte
+        const sourceObj = { id: 'src', x: 0, y: 0, r: 20, color: '#3b82f6', type: 'source' };
+        const listenerObj = { id: 'lst', x: 300, y: 0, r: 20, color: '#ef4444', type: 'listener' };
+        let blocks = [];
+        let selectedObject = null;
+
+        const materials = {
+            concrete: { name: 'Beton', damping: 0.1, color: '#525252' },
+            brick:    { name: 'Ziegel', damping: 0.2, color: '#7f1d1d' },
+            wood:     { name: 'Holz', damping: 0.4, color: '#92400e' },
+            glass:    { name: 'Glas', damping: 0.05, color: '#93c5fd' },
+            carpet:   { name: 'Dämmung', damping: 0.95, color: '#831843' },
+            door:     { name: 'Holztür', damping: 0.5, color: '#451a03' },
+            open:     { name: 'Offen', damping: 0.0, color: 'rgba(255,255,255,0.05)' }
+        };
+
+        /**
+         * --- HELPER: COORDINATE TRANSFORMS ---
+         */
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            draw();
+        }
+        window.addEventListener('resize', resize);
+
+        // Bildschirm (Pixel) -> Welt (Interne Logik)
+        function toWorld(sx, sy) {
+            return {
+                x: (sx - width/2 - camera.x) / camera.zoom,
+                y: (sy - height/2 - camera.y) / camera.zoom
+            };
+        }
+
+        // Welt -> Bildschirm (für Canvas Operationen falls nötig, meist macht das ctx.transform)
+        function toScreen(wx, wy) {
+            return {
+                x: (wx * camera.zoom) + camera.x + width/2,
+                y: (wy * camera.zoom) + camera.y + height/2
+            };
+        }
+
+        /**
+         * --- KLASSEN ---
+         */
+        class Block {
+            constructor(x, y, w, h, type) {
+                this.x = x; this.y = y; this.w = w; this.h = h;
+                this.type = type;
+                this.setMaterial(type === 'window' ? 'glass' : (type === 'door' ? 'door' : 'concrete'));
+            }
+            
+            setMaterial(key) {
+                this.materialKey = key;
+                this.damping = materials[key].damping;
+                this.color = materials[key].color;
+            }
+
+            draw(ctx, isSelected) {
+                ctx.save();
+                // Material Farbe
+                ctx.fillStyle = this.color;
+                if(this.materialKey === 'open') ctx.strokeStyle = '#555';
+                
+                // Schatten für Tiefe
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 15;
+                ctx.shadowOffsetY = 5;
+
+                ctx.fillRect(this.x, this.y, this.w, this.h);
+                if(this.materialKey === 'open') ctx.strokeRect(this.x, this.y, this.w, this.h);
+                
+                ctx.shadowColor = 'transparent'; // Reset shadow
+
+                // Selektion & Handles
+                if (isSelected) {
+                    ctx.strokeStyle = '#fbbf24';
+                    ctx.lineWidth = 2 / camera.zoom; // Linie bleibt gleich dick egal wie der Zoom ist
+                    ctx.strokeRect(this.x, this.y, this.w, this.h);
+
+                    // Handles zeichnen (müssen in World-Size passend sein)
+                    const hSize = 10 / camera.zoom; // Handles skalieren nicht mit Zoom, bleiben visuell gleich groß
+                    ctx.fillStyle = 'white';
+                    // TL
+                    ctx.fillRect(this.x - hSize/2, this.y - hSize/2, hSize, hSize);
+                    // TR
+                    ctx.fillRect(this.x + this.w - hSize/2, this.y - hSize/2, hSize, hSize);
+                    // BR
+                    ctx.fillRect(this.x + this.w - hSize/2, this.y + this.h - hSize/2, hSize, hSize);
+                    // BL
+                    ctx.fillRect(this.x - hSize/2, this.y + this.h - hSize/2, hSize, hSize);
+                } else {
+                    // Subtile Kontur
+                    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                    ctx.lineWidth = 1 / camera.zoom;
+                    ctx.strokeRect(this.x, this.y, this.w, this.h);
+                }
+                ctx.restore();
+            }
+
+            contains(wx, wy) {
+                return wx >= this.x && wx <= this.x + this.w && wy >= this.y && wy <= this.y + this.h;
+            }
+
+            getHandle(wx, wy) {
+                const hSize = 15 / camera.zoom; // Trefferzone etwas größer
+                // 0:TL, 1:TR, 2:BR, 3:BL
+                if (Math.abs(wx - this.x) < hSize && Math.abs(wy - this.y) < hSize) return 0;
+                if (Math.abs(wx - (this.x+this.w)) < hSize && Math.abs(wy - this.y) < hSize) return 1;
+                if (Math.abs(wx - (this.x+this.w)) < hSize && Math.abs(wy - (this.y+this.h)) < hSize) return 2;
+                if (Math.abs(wx - this.x) < hSize && Math.abs(wy - (this.y+this.h)) < hSize) return 3;
+                return -1;
+            }
+        }
+
+        /**
+         * --- INTERAKTION (MOUSE & TOUCH) ---
+         */
+        // Wir nutzen Pointer Events für unified Input
+        canvas.addEventListener('pointerdown', onPointerDown);
+        canvas.addEventListener('pointermove', onPointerMove);
+        canvas.addEventListener('pointerup', onPointerUp);
+        canvas.addEventListener('wheel', onWheel, { passive: false });
+
+        function onWheel(e) {
+            e.preventDefault();
+            const zoomIntensity = 0.001;
+            const delta = -e.deltaY * zoomIntensity;
+            const oldZoom = camera.zoom;
+            
+            // Zoom Limit
+            let newZoom = Math.min(Math.max(0.2, oldZoom + delta * oldZoom * 5), 5.0);
+            
+            // Zoom towards mouse pointer math
+            // 1. Mausposition in Welt VOR Zoom
+            const mouseWorld = toWorld(e.clientX, e.clientY);
+            
+            camera.zoom = newZoom;
+
+            // 2. Kamera verschieben, damit Maus-Welt-Punkt stabil bleibt
+            // screen = (world * zoom) + cam + offset
+            // cam = screen - offset - (world * zoom)
+            camera.x = e.clientX - width/2 - (mouseWorld.x * newZoom);
+            camera.y = e.clientY - height/2 - (mouseWorld.y * newZoom);
+
+            draw();
+        }
+
+        function onPointerDown(e) {
+            canvas.setPointerCapture(e.pointerId);
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const worldPos = toWorld(mx, my);
+
+            inputState.lastX = mx;
+            inputState.lastY = my;
+            inputState.isDragging = false;
+            inputState.isPanning = false;
+            inputState.isResizing = false;
+
+            // 1. Prüfen auf Resize Handles (höchste Prio)
+            if (selectedObject instanceof Block) {
+                const h = selectedObject.getHandle(worldPos.x, worldPos.y);
+                if (h !== -1) {
+                    inputState.isResizing = true;
+                    inputState.resizeHandle = h;
+                    inputState.dragTarget = selectedObject;
+                    return;
+                }
+            }
+
+            // 2. Prüfen auf Objekte
+            // Kreise (Quelle/Hörer)
+            if (Math.hypot(worldPos.x - sourceObj.x, worldPos.y - sourceObj.y) < sourceObj.r) {
+                inputState.dragTarget = sourceObj;
+                selectedObject = sourceObj;
+            } else if (Math.hypot(worldPos.x - listenerObj.x, worldPos.y - listenerObj.y) < listenerObj.r) {
+                inputState.dragTarget = listenerObj;
+                selectedObject = listenerObj;
+            } else {
+                // Blöcke (Reverse Iteration wegen z-index)
+                let hit = null;
+                for (let i = blocks.length - 1; i >= 0; i--) {
+                    if (blocks[i].contains(worldPos.x, worldPos.y)) {
+                        hit = blocks[i];
+                        break;
+                    }
+                }
+                selectedObject = hit;
+                inputState.dragTarget = hit;
+            }
+
+            updateUI();
+
+            if (inputState.dragTarget) {
+                inputState.isDragging = true;
+                // Offset speichern damit Objekt nicht zum Mauszeiger springt
+                if (inputState.dragTarget instanceof Block) {
+                    inputState.dragOffset = { x: worldPos.x - inputState.dragTarget.x, y: worldPos.y - inputState.dragTarget.y };
+                } else {
+                    inputState.dragOffset = { x: 0, y: 0 }; // Kreise zentriert ziehen
+                }
+            } else {
+                // Nichts getroffen -> PANNING
+                inputState.isPanning = true;
+            }
+            draw();
+        }
+
+        function onPointerMove(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const worldPos = toWorld(mx, my);
+
+            // Resizing
+            if (inputState.isResizing && inputState.dragTarget) {
+                const obj = inputState.dragTarget;
+                const minSize = 10;
+                
+                // Logik für verschiedene Ecken
+                // 0:TL, 1:TR, 2:BR, 3:BL
+                if (inputState.resizeHandle === 1 || inputState.resizeHandle === 2) { // Rechte Seite
+                    obj.w = Math.max(minSize, worldPos.x - obj.x);
+                }
+                if (inputState.resizeHandle === 2 || inputState.resizeHandle === 3) { // Unten
+                    obj.h = Math.max(minSize, worldPos.y - obj.y);
+                }
+                if (inputState.resizeHandle === 0 || inputState.resizeHandle === 3) { // Linke Seite
+                    const oldRight = obj.x + obj.w;
+                    const newX = Math.min(oldRight - minSize, worldPos.x);
+                    obj.w = oldRight - newX;
+                    obj.x = newX;
+                }
+                if (inputState.resizeHandle === 0 || inputState.resizeHandle === 1) { // Oben
+                    const oldBottom = obj.y + obj.h;
+                    const newY = Math.min(oldBottom - minSize, worldPos.y);
+                    obj.h = oldBottom - newY;
+                    obj.y = newY;
+                }
+                updateAudio();
+            }
+            // Dragging Objects
+            else if (inputState.isDragging && inputState.dragTarget) {
+                const obj = inputState.dragTarget;
+                if (obj instanceof Block) {
+                    obj.x = worldPos.x - inputState.dragOffset.x;
+                    obj.y = worldPos.y - inputState.dragOffset.y;
+                } else {
+                    obj.x = worldPos.x;
+                    obj.y = worldPos.y;
+                }
+                updateAudio();
+            }
+            // Panning Camera
+            else if (inputState.isPanning) {
+                const dx = mx - inputState.lastX;
+                const dy = my - inputState.lastY;
+                camera.x += dx;
+                camera.y += dy;
+            }
+            // Cursor Update
+            else {
+                 // Einfaches Hover Feedback
+                 // (Könnte optimiert werden, hier rudimentär)
+            }
+
+            inputState.lastX = mx;
+            inputState.lastY = my;
+            draw();
+        }
+
+        function onPointerUp(e) {
+            canvas.releasePointerCapture(e.pointerId);
+            inputState.isDragging = false;
+            inputState.isPanning = false;
+            inputState.isResizing = false;
+            inputState.dragTarget = null;
+        }
+
+
+        /**
+         * --- AUDIO ENGINE ---
+         */
+        async function toggleAudio() {
+            const btn = document.getElementById('btnAudioToggle');
+            const icon = btn.querySelector('i');
+            const text = btn.querySelector('span');
+
+            if (!audioCtx) {
+                // Erststart
+                await initAudio();
+                isAudioRunning = true;
+                text.textContent = "Audio Stoppen";
+                icon.className = "fas fa-stop";
+                btn.classList.replace('bg-green-700', 'bg-red-700');
+                btn.classList.replace('hover:bg-green-600', 'hover:bg-red-600');
+                return;
+            }
+
+            if (audioCtx.state === 'running') {
+                await audioCtx.suspend();
+                isAudioRunning = false;
+                text.textContent = "Audio Fortsetzen";
+                icon.className = "fas fa-play";
+                btn.classList.replace('bg-red-700', 'bg-yellow-600');
+                btn.classList.replace('hover:bg-red-600', 'hover:bg-yellow-500');
+            } else {
+                await audioCtx.resume();
+                isAudioRunning = true;
+                text.textContent = "Audio Stoppen";
+                icon.className = "fas fa-stop";
+                btn.classList.replace('bg-yellow-600', 'bg-red-700');
+                btn.classList.replace('hover:bg-yellow-500', 'hover:bg-red-600');
+            }
+        }
+
+        async function initAudio() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+
+            // Master Chain
+            nodes.master = audioCtx.createGain();
+            nodes.master.gain.value = 0.5;
+            nodes.master.connect(audioCtx.destination);
+
+            // Panner
+            nodes.panner = audioCtx.createPanner();
+            nodes.panner.panningModel = 'HRTF';
+            nodes.panner.distanceModel = 'inverse';
+            nodes.panner.refDistance = 50;
+            nodes.panner.maxDistance = 10000;
+            nodes.panner.rolloffFactor = 1;
+
+            // Filter (Okklusion)
+            nodes.filter = audioCtx.createBiquadFilter();
+            nodes.filter.type = 'lowpass';
+            nodes.filter.frequency.value = 20000;
+            
+            nodes.occlusionGain = audioCtx.createGain();
+
+            // Hall (Convolver)
+            nodes.reverb = audioCtx.createConvolver();
+            generateImpulse(2.0, 2.0); // Hall generieren
+            nodes.reverbGain = audioCtx.createGain();
+            nodes.reverbGain.gain.value = 0.4;
+
+            // Verkabelung
+            // Source -> Filter -> OcclusionGain -> Panner -> Master
+            // Source -> Reverb -> ReverbGain -> Master
+            nodes.filter.connect(nodes.occlusionGain);
+            nodes.occlusionGain.connect(nodes.panner);
+            nodes.panner.connect(nodes.master);
+            nodes.reverb.connect(nodes.reverbGain);
+            nodes.reverbGain.connect(nodes.master);
+
+            startOscillator();
+        }
+
+        function generateImpulse(duration, decay) {
+            const rate = audioCtx.sampleRate;
+            const length = rate * duration;
+            const impulse = audioCtx.createBuffer(2, length, rate);
+            const L = impulse.getChannelData(0), R = impulse.getChannelData(1);
+            for (let i = 0; i < length; i++) {
+                let n = i < length * 0.01 ? i/(length*0.01) : Math.pow(1 - i/length, decay);
+                L[i] = (Math.random() * 2 - 1) * n;
+                R[i] = (Math.random() * 2 - 1) * n;
+            }
+            nodes.reverb.buffer = impulse;
+        }
+
+        function startOscillator() {
+            if(nodes.source) { try{nodes.source.stop();}catch(e){} nodes.source.disconnect(); }
+            
+            const type = document.getElementById('soundType').value;
+            
+            if (type === 'noise') {
+                const bufSize = audioCtx.sampleRate * 2;
+                const buffer = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for(let i=0; i<bufSize; i++) data[i] = Math.random() * 2 - 1;
+                nodes.source = audioCtx.createBufferSource();
+                nodes.source.buffer = buffer;
+                nodes.source.loop = true;
+            } else if (audioBuffer && document.getElementById('audioFileInput').files.length > 0) {
+                 // User File
+                 nodes.source = audioCtx.createBufferSource();
+                 nodes.source.buffer = audioBuffer;
+                 nodes.source.loop = true;
+            } else {
+                // Osc
+                nodes.source = audioCtx.createOscillator();
+                nodes.source.type = type === 'sine' ? 'sine' : 'sawtooth';
+                nodes.source.frequency.value = 220;
+                // Kleiner LFO für Bewegung im Sound
+                const lfo = audioCtx.createOscillator();
+                lfo.frequency.value = 0.5;
+                const lfoGain = audioCtx.createGain();
+                lfoGain.gain.value = type === 'sine' ? 50 : 10;
+                lfo.connect(lfoGain);
+                lfoGain.connect(nodes.source.frequency);
+                lfo.start();
+            }
+
+            // Splitter für Dry/Wet
+            nodes.source.connect(nodes.filter);
+            nodes.source.connect(nodes.reverb);
+            nodes.source.start();
+        }
+
+        // Audio File Loader
+        document.getElementById('audioFileInput').addEventListener('change', e => {
+            if (!audioCtx) return alert("Bitte erst Audio starten.");
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = ev => {
+                audioCtx.decodeAudioData(ev.target.result, buf => {
+                    audioBuffer = buf;
+                    startOscillator(); // Restart mit neuem File
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        document.getElementById('soundType').addEventListener('change', () => {
+            if(isAudioRunning) startOscillator();
+        });
+        document.getElementById('volumeSlider').addEventListener('input', e => {
+            if(nodes.master) nodes.master.gain.value = e.target.value;
+            document.getElementById('volLabel').innerText = Math.round(e.target.value * 100) + "%";
+        });
+        document.getElementById('btnAudioToggle').addEventListener('click', toggleAudio);
+
+        /**
+         * --- PHYSIK & LOGIK ---
+         */
+        function updateAudio() {
+            if (!audioCtx || audioCtx.state !== 'running') return;
+
+            // 1. Listener Update
+            // Web Audio Panner nutzt X (rechts), Y (oben), Z (vorne)
+            // Unser 2D: X=X, Y=Z (Tiefe). Y in WebAudio ist Höhe (0)
+            const panner = nodes.panner;
+            const lX = listenerObj.x;
+            const lZ = listenerObj.y;
+            const sX = sourceObj.x;
+            const sZ = sourceObj.y;
+
+            if(audioCtx.listener.positionX) {
+                audioCtx.listener.positionX.value = lX;
+                audioCtx.listener.positionZ.value = lZ;
+                audioCtx.listener.forwardZ.value = -1; // Blick nach "Norden"
+                
+                panner.positionX.value = sX;
+                panner.positionZ.value = sZ;
+            } else {
+                // Safari fallback
+                panner.setPosition(sX, 0, sZ);
+                audioCtx.listener.setPosition(lX, 0, lZ);
+            }
+
+            // 2. Raycast / Okklusion
+            let occlusion = 0;
+            
+            // Einfacher Linecast von Source zu Listener
+            blocks.forEach(b => {
+                if(b.materialKey === 'open') return;
+                if(lineRectIntersect(sourceObj, listenerObj, b)) {
+                    occlusion += (1 - b.damping) * 10; // Addiere Widerstand
+                }
+            });
+
+            // Filter und Volume anpassen basierend auf Wänden
+            const targetFreq = Math.max(100, 20000 - (occlusion * 2000));
+            const targetGain = Math.max(0.1, 1.0 - (occlusion * 0.1));
+
+            nodes.filter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.2);
+            nodes.occlusionGain.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.2);
+            
+            // Reverb Mix
+            if(document.getElementById('toggleReverb').checked) {
+                nodes.reverbGain.gain.setTargetAtTime(0.4, audioCtx.currentTime, 0.5);
+            } else {
+                nodes.reverbGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.5);
+            }
+        }
+
+        // Einfacher Line-Rect Intersect Check
+        function lineRectIntersect(p1, p2, rect) {
+            // Vereinfacht: Prüfen ob Rechteck die Bounding Box der Linie schneidet UND Line-Algorithmus
+            // Hier extrem vereinfacht für Performance: Prüfen ob Mittelpunkt der Linie im Rect ist (ungenau aber schnell)
+            // Besser: Liang-Barsky oder Segment-Check.
+            // Wir nutzen eine sampling methode (5 punkte auf der Linie)
+            const steps = 5;
+            for(let i=0; i<=steps; i++) {
+                const t = i/steps;
+                const px = p1.x + (p2.x - p1.x) * t;
+                const py = p1.y + (p2.y - p1.y) * t;
+                if(rect.contains(px, py)) return true;
+            }
+            return false;
+        }
+
+        /**
+         * --- DRAWING ---
+         */
+        function draw() {
+            // Hintergrund
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            
+            // --- CAMERA TRANSFORM START ---
+            // Zentrieren des Canvas
+            ctx.translate(width/2, height/2);
+            // Camera Position (invertiert, da wir die Welt verschieben)
+            ctx.translate(camera.x, camera.y);
+            // Zoom
+            ctx.scale(camera.zoom, camera.zoom);
+            
+            // Gitter (World Space)
+            drawGrid();
+
+            // Verbindungen
+            ctx.beginPath();
+            ctx.moveTo(sourceObj.x, sourceObj.y);
+            ctx.lineTo(listenerObj.x, listenerObj.y);
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 2 / camera.zoom;
+            ctx.setLineDash([10, 10]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Objekte
+            blocks.forEach(b => b.draw(ctx, selectedObject === b));
+
+            // Rays
+            if(document.getElementById('toggleRays').checked) drawRays();
+
+            // Source
+            drawCircle(sourceObj, '\uf028'); // Speaker
+            if(isAudioRunning) {
+                ctx.beginPath();
+                ctx.arc(sourceObj.x, sourceObj.y, sourceObj.r + Math.sin(Date.now()/100)*10, 0, Math.PI*2);
+                ctx.strokeStyle = `rgba(59,130,246,0.5)`;
+                ctx.lineWidth = 2/camera.zoom;
+                ctx.stroke();
+            }
+
+            // Listener
+            drawCircle(listenerObj, '\uf2a0'); // Ear
+
+            // --- CAMERA TRANSFORM END ---
+            ctx.restore();
+
+            // Debug Overlay (Optional)
+            // ctx.fillStyle = 'white'; ctx.fillText(`Zoom: ${camera.zoom.toFixed(2)}`, 10, 20);
+
+            if(isAudioRunning) requestAnimationFrame(draw);
+        }
+
+        function drawGrid() {
+            const gridSize = 100;
+            const range = 2000 / camera.zoom; // Nur sichtbaren Bereich zeichnen Optimierung
+            
+            // Wir berechnen sichtbaren Bereich im Worldspace
+            const tl = toWorld(0, 0);
+            const br = toWorld(width, height);
+            
+            const startX = Math.floor(tl.x / gridSize) * gridSize;
+            const endX = Math.ceil(br.x / gridSize) * gridSize;
+            const startY = Math.floor(tl.y / gridSize) * gridSize;
+            const endY = Math.ceil(br.y / gridSize) * gridSize;
+
+            ctx.beginPath();
+            ctx.strokeStyle = '#2a2a2a';
+            ctx.lineWidth = 1 / camera.zoom;
+
+            for (let x = startX; x <= endX; x += gridSize) {
+                ctx.moveTo(x, startY); ctx.lineTo(x, endY);
+            }
+            for (let y = startY; y <= endY; y += gridSize) {
+                ctx.moveTo(startX, y); ctx.lineTo(endX, y);
+            }
+            ctx.stroke();
+
+            // Achsen
+            ctx.beginPath();
+            ctx.strokeStyle = '#444';
+            ctx.moveTo(startX, 0); ctx.lineTo(endX, 0);
+            ctx.moveTo(0, startY); ctx.lineTo(0, endY);
+            ctx.stroke();
+        }
+
+        function drawCircle(obj, iconChar) {
+            ctx.beginPath();
+            ctx.arc(obj.x, obj.y, obj.r, 0, Math.PI * 2);
+            ctx.fillStyle = obj.color;
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2 / camera.zoom;
+            if(selectedObject === obj) ctx.stroke();
+            
+            ctx.fillStyle = 'white';
+            ctx.font = `${16/camera.zoom}px "Font Awesome 6 Free"`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `900 ${14/camera.zoom}px "Font Awesome 6 Free"`; // Solid weight
+            ctx.fillText(iconChar, obj.x, obj.y);
+        }
+
+        function drawRays() {
+            if(!isAudioRunning) return;
+            // Simuliertes Raycast Drawing (Visual only)
+            const count = 36;
+            ctx.lineWidth = 1 / camera.zoom;
+            for(let i=0; i<count; i++) {
+                const angle = (Date.now()/5000) + (i/count)*Math.PI*2;
+                const dx = Math.cos(angle);
+                const dy = Math.sin(angle);
+                
+                // Ray Start
+                ctx.beginPath();
+                ctx.moveTo(sourceObj.x, sourceObj.y);
+                
+                // Finde nächsten Hit (simuliert)
+                let dist = 1000;
+                let hit = null;
+                
+                // Sehr vereinfachte Visualisierung: Wir zeichnen einfach Linien bis sie was treffen
+                // Eine echte Raycast Engine in JS Canvas in Echtzeit ist teuer, hier visuelle Annäherung
+                
+                const endX = sourceObj.x + dx * dist;
+                const endY = sourceObj.y + dy * dist;
+                
+                ctx.strokeStyle = 'rgba(255,255,0,0.05)';
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+            }
+        }
+
+        /**
+         * --- UI HELPERS ---
+         */
+        function addBlock(type) {
+            // Spawn relativ zur Screen Mitte im World space
+            const center = toWorld(width/2, height/2);
+            blocks.push(new Block(center.x - 50, center.y - 10, 100, 20, type));
+            updateAudio();
+            draw();
+        }
+        function clearAll() { blocks = []; selectedObject = null; updateUI(); draw(); updateAudio(); }
+        function deselect() { selectedObject = null; updateUI(); draw(); }
+        function deleteSelected() { 
+            if(selectedObject instanceof Block) {
+                blocks = blocks.filter(b => b !== selectedObject);
+                deselect();
+            }
+        }
+
+        function toggleCheck(id) {
+            const cb = document.getElementById(id);
+            cb.checked = !cb.checked;
+            draw(); updateAudio();
+        }
+
+        const propsPanel = document.getElementById('propertiesPanel');
+        function updateUI() {
+            if(selectedObject) {
+                propsPanel.classList.remove('hidden', 'translate-x-full');
+                document.getElementById('selectedLabel').textContent = selectedObject instanceof Block ? 
+                    `Wand: ${materials[selectedObject.materialKey].name}` : 
+                    (selectedObject.type === 'source' ? 'Audio Quelle' : 'Hörer Position');
+                
+                if(selectedObject instanceof Block) {
+                    document.getElementById('materialControls').style.display = 'block';
+                    document.getElementById('materialSelect').value = selectedObject.materialKey;
+                    document.getElementById('dampingSlider').value = selectedObject.damping;
+                    document.getElementById('dampingVal').textContent = (selectedObject.damping*100).toFixed(0) + '%';
+                } else {
+                    document.getElementById('materialControls').style.display = 'none';
+                }
+            } else {
+                propsPanel.classList.add('hidden', 'translate-x-full');
+            }
+        }
+
+        document.getElementById('materialSelect').addEventListener('change', e => {
+            if(selectedObject instanceof Block) {
+                selectedObject.setMaterial(e.target.value);
+                updateUI(); updateAudio(); draw();
+            }
+        });
+        document.getElementById('dampingSlider').addEventListener('input', e => {
+            if(selectedObject instanceof Block) {
+                selectedObject.damping = parseFloat(e.target.value);
+                updateUI(); updateAudio();
+            }
+        });
+
+        // Initial
+        resize();
+        // Kleines Beispiel Setup
+        blocks.push(new Block(-200, -150, 20, 300, 'wall')); // Links
+        blocks.push(new Block(200, -150, 20, 300, 'wall'));  // Rechts
+        blocks.push(new Block(-200, -150, 420, 20, 'wall')); // Oben
+        blocks.push(new Block(-200, 150, 150, 20, 'wall'));  // Unten L
+        blocks.push(new Block(50, 150, 170, 20, 'wall'));    // Unten R
+        blocks.push(new Block(-50, 155, 100, 10, 'door'));   // Tür
+
+    </script>
+</body>
+</html>
