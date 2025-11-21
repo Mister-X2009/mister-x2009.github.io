@@ -1,25 +1,164 @@
-body.light {
-  background-color: #fff;
-  color: #000;
+/* --- Grundlayout --- */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 20px;
+  transition: background-color 0.3s, color 0.3s;
 }
 
+/* --- Light Mode --- */
+body.light {
+  background-color: #f5f5f5;
+  color: #222;
+}
+
+body.light table th {
+  background-color: #e0e0e0;
+  color: #222;
+}
+
+body.light table td {
+  background-color: #fff;
+  color: #222;
+}
+
+/* --- Dark Mode --- */
 body.dark {
-  background-color: #222;
+  background-color: #121212;
+  color: #e0e0e0;
+}
+
+body.dark table th {
+  background-color: #1f1f1f;
+  color: #e0e0e0;
+}
+
+body.dark table td {
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+}
+
+/* --- Buttons --- */
+button {
+  margin: 3px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+body.light button {
+  background-color: #1976d2;
   color: #fff;
 }
 
+body.light button:hover {
+  background-color: #1565c0;
+}
+
+body.dark button {
+  background-color: #bb86fc;
+  color: #121212;
+}
+
+body.dark button:hover {
+  background-color: #9a67ea;
+}
+
+/* --- Inputs --- */
+input[type="text"],
+input[type="date"],
+input[type="number"],
+input[type="file"] {
+  padding: 6px 10px;
+  margin: 3px;
+  border: 1px solid #888;
+  border-radius: 5px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+body.light input:focus {
+  border-color: #1976d2;
+  background-color: #fff;
+}
+
+body.dark input:focus {
+  border-color: #bb86fc;
+  background-color: #2a2a2a;
+}
+
+/* --- Tabelle --- */
 table {
   width: 100%;
   border-collapse: collapse;
+  margin-top: 15px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
 
 th, td {
-  border: 1px solid #888;
-  padding: 5px;
+  padding: 10px;
   text-align: center;
+  border-bottom: 1px solid #888;
 }
 
-button {
-  margin: 2px;
-  padding: 5px 10px;
+th {
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+/* Unterschiedliche Farben für Spaltenkategorien */
+th:nth-child(1), td:nth-child(1) { background-color: #ffcc80; } /* Code */
+th:nth-child(2), td:nth-child(2) { background-color: #ffab91; } /* Typ */
+th:nth-child(3), td:nth-child(3) { background-color: #80cbc4; } /* Gruppe */
+th:nth-child(4), td:nth-child(4) { background-color: #90caf9; } /* Ablauf */
+th:nth-child(5), td:nth-child(5) { background-color: #ce93d8; } /* Status */
+th:nth-child(6), td:nth-child(6) { background-color: #ffe082; } /* QR */
+th:nth-child(7), td:nth-child(7) { background-color: #a5d6a7; } /* Aktion */
+
+/* Dark Mode Spaltenfarben leicht dunkler */
+body.dark th:nth-child(1), body.dark td:nth-child(1) { background-color: #8d6e63; }
+body.dark th:nth-child(2), body.dark td:nth-child(2) { background-color: #bc6c5d; }
+body.dark th:nth-child(3), body.dark td:nth-child(3) { background-color: #4db6ac; }
+body.dark th:nth-child(4), body.dark td:nth-child(4) { background-color: #64b5f6; }
+body.dark th:nth-child(5), body.dark td:nth-child(5) { background-color: #ba68c8; }
+body.dark th:nth-child(6), body.dark td:nth-child(6) { background-color: #ffd54f; }
+body.dark th:nth-child(7), body.dark td:nth-child(7) { background-color: #81c784; }
+
+/* --- QR-Code Container --- */
+td div[id^="qrcode-"] {
+  margin: auto;
+  width: 64px;
+  height: 64px;
+}
+
+/* --- Responsive --- */
+@media (max-width: 900px) {
+  table, th, td {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 600px) {
+  table, th, td {
+    font-size: 0.7rem;
+  }
+}
+
+/* --- Hover Effect --- */
+table tbody tr {
+  transition: background-color 0.3s, transform 0.2s;
+  cursor: pointer;
+}
+
+body.light table tbody tr:hover {
+  background-color: rgba(25, 118, 210, 0.2); /* hellblauer Effekt */
+  transform: translateY(-2px);
+}
+
+body.dark table tbody tr:hover {
+  background-color: rgba(187, 134, 252, 0.2); /* lila Effekt */
+  transform: translateY(-2px);
 }
