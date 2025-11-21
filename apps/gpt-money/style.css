@@ -1,24 +1,18 @@
 :root{ --bg:#f6f7fa; --card:#fff; --text:#111; --muted:#666; }
 :root.dark{ --bg:#0f1115; --card:#141619; --text:#e8eef6; --muted:#9aa3b2; }
-
 html,body{ height:100%; margin:0; font-family:Inter, system-ui, Arial; background:var(--bg); color:var(--text); }
-
 .topbar{ display:flex; justify-content:space-between; align-items:center; padding:14px 20px; background:linear-gradient(90deg, rgba(0,0,0,0.03), transparent); }
 .topbar h1{ margin:0; font-size:20px; }
 .controls{ display:flex; gap:12px; align-items:center; }
-
 .grid{ display:grid; grid-template-columns: repeat(3, 1fr); gap:14px; padding:18px; }
 .card{ background:var(--card); padding:14px; border-radius:10px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
 .card.wide{ grid-column: span 2; }
 .card h2{ margin-top:0; }
-
 .form-row{ display:flex; gap:8px; margin:8px 0; }
 .form-row input, .form-row select, .form-row button{ padding:8px; border-radius:6px; border:1px solid #ddd; background:transparent; color:var(--text); }
 .form-row button{ cursor:pointer; }
-
 .list{ max-height:420px; overflow:auto; display:flex; flex-direction:column; gap:10px; }
 .list.small{ max-height:200px; }
-
 .product{ display:flex; gap:12px; align-items:center; padding:8px; border-radius:8px; border:1px solid rgba(0,0,0,0.04); }
 .product .thumb{ width:90px; height:90px; object-fit:cover; border-radius:6px; }
 .product .meta{ flex:1; }
@@ -26,16 +20,20 @@ html,body{ height:100%; margin:0; font-family:Inter, system-ui, Arial; backgroun
 .product .actions button{ padding:6px 8px; }
 .saleItem{ padding:6px 8px; border-bottom:1px solid rgba(0,0,0,0.04); }
 
+/* Labels */
 .labelPage{ width:100%; height:100vh; display:flex; align-items:center; justify-content:center; page-break-after:always; }
 .labelInner{ border:1px dashed rgba(0,0,0,0.1); padding:40px; text-align:center; }
 
+/* Dark theme toggle */
 .switch{ display:flex; gap:8px; align-items:center; }
 .switch input{ transform:scale(1.2); }
 
+/* Print styles */
 @media print{
   body *{ visibility: hidden; }
   #labelPreview, #labelPreview *{ visibility: visible; }
   #labelPreview{ position: absolute; left:0; top:0; width:100%; }
 }
 
+/* Responsive */
 @media (max-width:1000px){ .grid{ grid-template-columns: 1fr; } .card.wide{ grid-column: auto; } }
