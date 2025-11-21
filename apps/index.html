@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Produktverwaltung</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Produktverwaltung</h1>
+    <div class="controls">
+      <label class="switch"><input id="darkToggle" type="checkbox"><span>Dark</span></label>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- Product Form Card -->
+    <section class="card">
+      <h2>Produkt hinzufügen / bearbeiten</h2>
+      <div class="form-row">
+        <input id="name" placeholder="Name">
+        <input id="barcode" placeholder="Barcode (leer = autogeneriert)">
+      </div>
+      <div class="form-row">
+        <input id="qty" type="number" min="0" placeholder="Anzahl">
+        <input id="price" type="number" min="0" step="0.01" placeholder="Preis €">
+      </div>
+      <div class="form-row">
+        <input id="category" placeholder="Kategorie (neu eingeben oder wählen)">
+        <select id="categorySelect"></select>
+      </div>
+      <div class="form-row">
+        <input id="img" type="file" accept="image/*">
+      </div>
+      <div class="form-row">
+        <button id="saveBtn">Speichern</button>
+        <button id="clearForm">Zurücksetzen</button>
+      </div>
+    </section>
+
+    <!-- Import / Export Card -->
+    <section class="card">
+      <h2>Import / Export</h2>
+      <div class="form-row">
+        <label>Datei (CSV)</label>
+        <input id="csvFile" type="file" accept="text/csv">
+      </div>
+      <div class="form-row">
+        <label>Import-Modus</label>
+        <select id="importMode">
+          <option value="overwrite">Überschreiben (komplett ersetzen)</option>
+          <option value="add">Hinzufügen / Zusammenführen</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <button id="importBtn">Importieren</button>
+        <button id="exportBtn">Exportieren (CSV)</button>
+      </div>
+    </section>
+
+    <!-- Filter & Search Card -->
+    <section class="card wide">
+      <h2>Filter & Suche</h2>
+      <div class="form-row">
+        <input id="search" placeholder="Suche nach Name oder Barcode">
+        <select id="filterCategory"><option value="">Alle Kategorien</option></select>
+      </div>
+      <div class="form-row">
+        <input id="minQty" type="number" placeholder="Mindestbestand">
+        <input id="maxPrice" type="number" placeholder="Max Preis">
+        <button id="applyFilter">Anwenden</button>
+        <button id="resetFilter">Zurücksetzen</button>
+      </div>
+      <h3>Produkte</h3>
+      <div id="productList" class="list"></div>
+    </section>
+
+    <!-- Sales Card -->
+    <section class="card">
+      <h2>Verkaufsaktionen</h2>
+      <div class="form-row">
+        <select id="sellSelect"></select>
+        <input id="sellQty" type="number" min="1" value="1">
+        <button id="sellBtn">Verkaufen</button>
+      </div>
+      <h3>Verkaufsliste</h3>
+      <div id="salesList" class="list small"></div>
+    </section>
+
+    <!-- Stats Card -->
+    <section class="card">
+      <h2>Statistiken</h2>
+      <p>Gesamtwert Lager: <strong id="totalValue">0 €</strong></p>
+      <canvas id="catChart" width="400" height="200"></canvas>
+      <canvas id="salesChart" width="400" height="200" style="margin-top:12px"></canvas>
+    </section>
+
+    <!-- Labels Card -->
+    <section class="card">
+      <h2>Etiketten (druckbar)</h2>
+      <p>Jedes Etikett nimmt eine Seite beim Drucken.</p>
+      <div class="form-row">
+        <select id="labelSelect"></select>
+        <button id="printLabel">Etikett drucken</button>
+        <button id="printAllLabels">Alle Etiketten drucken</button>
+      </div>
+      <div id="labelPreview"></div>
+    </section>
+  </main>
+
+  <template id="productTpl">
+    <div class="product">
+      <div class="meta">
+        <h4 class="pname"></h4>
+        <p>Barcode: <span class="pbarcode"></span></p>
+        <p>Kat: <span class="pcat"></span></p>
+        <p>Anzahl: <span class="pqty"></span></p>
+        <p>Preis: <span class="pprice"></span> €</p>
+      </div>
+      <div class="thumb-wrap"><img class="thumb"></div>
+      <div class="actions">
+        <svg class="barcodeSvg"></svg>
+        <button class="edit">Bearbeiten</button>
+        <button class="del">Löschen</button>
+      </div>
+    </div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
