@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glass Player (Native Audio)</title>
+    <!-- Lade Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lade jsmediatags für das Auslesen von Metadaten (Cover, Titel, Interpret) -->
+    <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.7/dist/jsmediatags.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: 240, 248, 255; /* AliceBlue-ish */
+            --secondary-color: 255, 255, 255; /* White */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1e3a8a 0%, #064e3b 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        /* Glassmorphism-Stil */
+        .glass-container {
+            background: rgba(var(--secondary-color), 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(var(--secondary-color), 0.3);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+            border-radius: 20px;
+            color: white;
+        }
+
+        /* Styling für Input-Range (Slider) */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px; 
+            
+            /* FORTSCHRITTS-HINTERGRUND */
+            background: linear-gradient(to right, rgb(var(--primary-color)) var(--progress, 0%), rgba(var(--primary-color), 0.3) var(--progress, 0%));
+            
+            border-radius: 3px;
+            outline: none;
+            transition: opacity .2s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgb(var(--primary-color));
+            cursor: pointer;
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+        }
+
+        /* Standardstile für den Rest (Controls, Playlist etc.) */
+        .playlist-item:hover { background: rgba(var(--primary-color), 0.15); }
+        .playlist-item.active { background: rgba(var(--primary-color), 0.25); font-weight: 600; }
+        .control-btn { background: rgba(var(--secondary-color), 0.1); transition: background 0.2s, transform 0.1s; }
+        .control-btn:hover { background: rgba(var(--secondary-color), 0.2); }
+        .control-btn:active { transform: scale(0.95); }
+        .file-input-container { display: none; }
+    </style>
+</head>
+<body class="selection:bg-white selection:text-blue-900">
+
+    <div id="player-app" class="glass-container w-full max-w-4xl p-6 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8 transition-all">
+        
+        <!-- Player-Steuerungen (Linke Seite/Top) -->
+        <div class="lg:col-span-2">
+            <h1 class="text-3xl font-bold mb-6 text-white text-opacity-80">Glass Player</h1>
+
+            <!-- Aktuelle Wiedergabe & Cover -->
+            <div class="glass-container p-6 rounded-xl mb-6 flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
+                
+                <!-- Cover -->
+                <div class="w-full md:w-auto flex-shrink-0">
+                    <img id="cover-image" class="w-48 h-48 rounded-lg shadow-2xl object-cover bg-black" 
+                         src="https://placehold.co/192x192/000000/ffffff?text=W%C3%A4hle+Musik" 
+                         alt="Album Cover"
+                         onerror="this.src='https://placehold.co/192x192/000000/ffffff?text=Kein+Cover'">
+                </div>
+                
+                <!-- Song-Details und Controls -->
+                <div class="flex-grow w-full md:w-auto space-y-4">
+                    <div class="text-center md:text-left">
+                        <p id="current-title" class="text-2xl font-bold truncate">Titel</p>
+                        <p id="current-artist" class="text-lg text-white text-opacity-60 truncate">Interpret</p>
+                    </div>
+
+                    <!-- Progress Bar (Seek Slider) -->
+                    <div class="w-full">
+                        <input type="range" id="seek-slider" value="0" min="0" max="100" class="w-full h-2 rounded-full cursor-pointer">
+                        <div class="flex justify-between text-sm text-white text-opacity-60 mt-1">
+                            <span id="current-time">0:00</span>
+                            <span id="duration-time">0:00</span>
+                        </div>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="flex justify-center items-center space-x-6 pt-2">
+                        <button id="prev-btn" class="control-btn p-3 rounded-full text-white hover:text-blue-300 transition duration-150" aria-label="Vorheriger Titel">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+                        </button>
+                        <button id="play-pause-btn" class="control-btn p-4 rounded-full text-white bg-white bg-opacity-20 hover:bg-opacity-30 transition duration-150" aria-label="Abspielen/Pause">
+                            <svg id="play-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            <svg id="pause-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 hidden"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                        </button>
+                        <button id="next-btn" class="control-btn p-3 rounded-full text-white hover:text-blue-300 transition duration-150" aria-label="Nächster Titel">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+                        </button>
+                    </div>
+
+                    <!-- Lautstärke -->
+                    <div class="flex items-center space-x-3 w-full pt-2">
+                        <!-- Lautstärke-Symbol (Niedrig) -->
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-white text-opacity-60"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon></svg>
+                        
+                        <input type="range" id="volume-slider" value="70" min="0" max="100" class="flex-grow h-1 rounded-full cursor-pointer">
+                        
+                        <!-- Lautstärke-Symbol (Hoch) -->
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-white text-opacity-60"><path d="M19 12a3 3 0 0 0-3-3m-1 7a3 3 0 0 0 3-3"></path><path d="M11 5L6 9H2v6h4l5 4z"/></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Die EQ-Sektion wurde entfernt. -->
+
+        </div>
+
+        <!-- Playlist (Rechte Seite) -->
+        <div class="lg:col-span-1 flex flex-col space-y-6">
+            
+            <!-- Playlist Header -->
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-white text-opacity-80">Playlist</h2>
+                
+                <div class="flex space-x-2">
+                    <!-- Musik-Dateien hinzufügen -->
+                    <button id="add-music-btn" class="control-btn px-3 py-1.5 rounded-full text-sm flex items-center space-x-1" title="Musik hinzufügen">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        <span>Hinzufügen</span>
+                    </button>
+                    <!-- Playlist löschen -->
+                    <button id="clear-playlist-btn" class="control-btn px-3 py-1.5 rounded-full text-sm text-red-300 hover:text-red-500 transition duration-150" title="Playlist löschen">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Versteckter Datei-Input mit erweiterter 'accept'-Liste -->
+            <input type="file" id="music-file-input" 
+                   accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/mpeg,audio/mp4,audio/m4a,audio/*" 
+                   multiple class="file-input-container">
+            
+            <!-- Verstecktes natives Audio-Element -->
+            <audio id="audio-element" style="display: none;"></audio>
+
+            <!-- Playlist Liste -->
+            <div id="playlist" class="glass-container flex-grow overflow-y-auto rounded-xl p-2 space-y-1 h-80 lg:h-auto">
+                <p id="empty-message" class="text-white text-opacity-60 p-4 text-center">Wähle Musikdateien aus, um die Playlist zu füllen.</p>
+                <!-- Playlist-Elemente werden hier eingefügt -->
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const DOM = {
+            // DOM-Elemente
+            addBtn: document.getElementById('add-music-btn'),
+            clearBtn: document.getElementById('clear-playlist-btn'),
+            fileInput: document.getElementById('music-file-input'),
+            playlistDiv: document.getElementById('playlist'),
+            emptyMessage: document.getElementById('empty-message'),
+            coverImage: document.getElementById('cover-image'),
+            currentTitle: document.getElementById('current-title'),
+            currentArtist: document.getElementById('current-artist'),
+            playPauseBtn: document.getElementById('play-pause-btn'),
+            prevBtn: document.getElementById('prev-btn'),
+            nextBtn: document.getElementById('next-btn'),
+            playIcon: document.getElementById('play-icon'),
+            pauseIcon: document.getElementById('pause-icon'),
+            seekSlider: document.getElementById('seek-slider'),
+            currentTime: document.getElementById('current-time'),
+            durationTime: document.getElementById('duration-time'),
+            volumeSlider: document.getElementById('volume-slider'),
+            audioElement: document.getElementById('audio-element'), 
+        };
+
+        const LOCAL_STORAGE_KEY = 'glassPlayerPlaylist';
+
+        let playlist = []; 
+        let audioFiles = {}; 
+        let currentIndex = -1;
+        let isPlaying = false;
+        let isDraggingSeek = false; // Blockiert die timeupdate-Aktualisierung WÄHREND des Ziehens
+        
+        // --- Helferfunktionen ---
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0 || !isFinite(seconds)) return "0:00";
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+        }
+        
+        // Aktualisiert den Slider und die Zeitanzeige basierend auf Sekunden und Dauer
+        function updateSeekSliderUI(seconds, duration) {
+            if (duration <= 0 || isNaN(duration)) {
+                DOM.seekSlider.value = 0;
+                DOM.seekSlider.style.setProperty('--progress', `0%`);
+                DOM.currentTime.textContent = '0:00';
+                return;
+            }
+
+            const percentage = (seconds / duration) * 100;
+            
+            // Setze den Slider-Wert nur, wenn wir NICHT ziehen
+            if (!isDraggingSeek) {
+                DOM.seekSlider.value = percentage;
+            }
+            
+            // Aktualisiere den visuellen Fortschrittsbalken-Hintergrund
+            DOM.seekSlider.style.setProperty('--progress', `${percentage}%`);
+            DOM.currentTime.textContent = formatTime(seconds);
+        }
+
+        function createBase64Image(picture) {
+            let base64String = "";
+            for (let i = 0; i < picture.data.length; i++) {
+                base64String += String.fromCharCode(picture.data[i]);
+            }
+            return `data:${picture.format};base64,${btoa(base64String)}`;
+        }
+        
+        function savePlaylist() {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(playlist));
+        }
+
+        function loadPlaylist() {
+            const storedPlaylist = localStorage.getItem(LOCAL_STORAGE_KEY);
+            if (storedPlaylist) {
+                playlist = JSON.parse(storedPlaylist);
+                renderPlaylist();
+            }
+        }
+        
+        function renderPlaylist() {
+            DOM.playlistDiv.innerHTML = '';
+            if (playlist.length === 0) {
+                DOM.emptyMessage.classList.remove('hidden');
+                return;
+            }
+            DOM.emptyMessage.classList.add('hidden');
+
+            playlist.forEach((song, index) => {
+                const item = document.createElement('div');
+                item.className = `playlist-item p-3 rounded-lg flex items-center space-x-3 cursor-pointer transition duration-150 ${index === currentIndex ? 'active' : ''}`;
+                item.dataset.index = index;
+                item.innerHTML = `
+                    <img src="${song.coverUrl || 'https://placehold.co/40x40/000000/ffffff?text=C'}" 
+                         class="w-10 h-10 rounded object-cover flex-shrink-0" alt="Cover">
+                    <div class="flex-grow min-w-0">
+                        <p class="text-sm font-medium truncate">${song.title || song.fileName}</p>
+                        <p class="text-xs text-white text-opacity-60 truncate">${song.artist || 'Unbekannt'}</p>
+                    </div>
+                `;
+                item.addEventListener('click', () => playSong(index));
+                DOM.playlistDiv.appendChild(item);
+            });
+        }
+        
+        function updateSongUI(song) {
+            DOM.currentTitle.textContent = song.title || song.fileName;
+            DOM.currentArtist.textContent = song.artist || 'Unbekannt';
+            DOM.coverImage.src = song.coverUrl || 'https://placehold.co/192x192/000000/ffffff?text=Kein+Cover';
+        }
+        
+        function handleFiles(files) {
+             if (files.length === 0) return;
+
+            Array.from(files).forEach((file, fileIndex) => {
+                const fileId = `${Date.now()}-${playlist.length + fileIndex}`;
+                audioFiles[fileId] = file;
+                const blobUrl = URL.createObjectURL(file);
+                
+                let songData = {
+                    id: fileId,
+                    fileName: file.name,
+                    title: file.name.replace(/\.[^/.]+$/, ""),
+                    artist: 'Unbekannt',
+                    coverUrl: '',
+                    blobUrl: blobUrl,
+                };
+                
+                // jsmediatags kann bei nicht-mp3/m4a-Dateien fehlschlagen, das ist okay
+                jsmediatags.read(file, {
+                    onSuccess: function(tag) {
+                        const tags = tag.tags;
+                        songData.title = tags.title || songData.title;
+                        songData.artist = tags.artist || 'Unbekannt';
+
+                        if (tags.picture) {
+                            songData.coverUrl = createBase64Image(tags.picture);
+                        }
+
+                        playlist.push(songData);
+                        savePlaylist();
+                        renderPlaylist();
+                    },
+                    onError: function(error) {
+                        // Wenn Metadaten nicht gelesen werden können, verwenden wir die Standarddaten
+                        console.warn("Fehler beim Lesen der Metadaten, verwende Dateinamen:", error.type, error.info);
+                        playlist.push(songData);
+                        savePlaylist();
+                        renderPlaylist();
+                    }
+                });
+            });
+            
+            if (currentIndex === -1 && playlist.length > 0) {
+                // Warte kurz, bis Metadaten-Lesevorgänge abgeschlossen sind, bevor gestartet wird
+                setTimeout(() => playSong(0), 500); 
+            }
+        }
+        
+        // --- Wiedergabelogik (Native Audio) ---
+        
+        async function playSong(index) {
+            
+            if (index < 0 || index >= playlist.length) {
+                currentIndex = -1;
+                DOM.audioElement.pause();
+                isPlaying = false;
+                updatePlayPauseButton(false);
+                return;
+            }
+
+            currentIndex = index;
+            const song = playlist[currentIndex];
+            
+            // Setze die Audioquelle
+            DOM.audioElement.src = song.blobUrl;
+            
+            updateSongUI(song);
+            renderPlaylist(); 
+
+            try {
+                // Spiele das Audio ab
+                await DOM.audioElement.play(); 
+                isPlaying = true;
+                updatePlayPauseButton(true);
+            } catch (error) {
+                console.error("Fehler beim Abspielen (Wahrscheinlich Nutzer-Interaktions-Block):", error);
+                isPlaying = false;
+                updatePlayPauseButton(false);
+            }
+        }
+        
+        function togglePlayPause() {
+            if (currentIndex === -1 && playlist.length > 0) {
+                playSong(0);
+                return;
+            }
+
+            if (DOM.audioElement.src === '') return;
+
+            if (isPlaying) {
+                DOM.audioElement.pause();
+                isPlaying = false;
+            } else {
+                DOM.audioElement.play();
+                isPlaying = true;
+            }
+            updatePlayPauseButton(isPlaying);
+        }
+
+        function playNext() {
+            if (playlist.length === 0) return;
+            const nextIndex = (currentIndex + 1) % playlist.length;
+            playSong(nextIndex);
+        }
+
+        function updatePlayPauseButton(isCurrentlyPlaying) {
+            if (isCurrentlyPlaying) {
+                DOM.playIcon.classList.add('hidden');
+                DOM.pauseIcon.classList.remove('hidden');
+            } else {
+                DOM.playIcon.classList.remove('hidden');
+                DOM.pauseIcon.classList.add('hidden');
+            }
+        }
+        
+        // --- NATIVE AUDIO EVENT LISTENER ---
+        
+        // Event, das ständig die aktuelle Zeit des Audio-Elements liefert
+        DOM.audioElement.addEventListener('timeupdate', () => {
+            const audio = DOM.audioElement;
+            
+            // Blockierung: NICHT die UI aktualisieren, wenn der Benutzer zieht
+            if (isDraggingSeek) {
+                return; 
+            } 
+
+            const currentTime = audio.currentTime;
+            const duration = audio.duration;
+            
+            if (isNaN(duration)) return; 
+
+            updateSeekSliderUI(currentTime, duration);
+        });
+
+        // Event, wenn der Song zu Ende ist
+        DOM.audioElement.addEventListener('ended', playNext);
+
+        // Event, wenn die Metadaten geladen sind (um die Dauer zu setzen)
+        DOM.audioElement.addEventListener('loadedmetadata', () => {
+            DOM.durationTime.textContent = formatTime(DOM.audioElement.duration);
+        });
+        
+        
+        // --- SEEK-LOGIK ---
+        
+        /**
+         * Führt das eigentliche "Springen" im Lied durch, wenn der Regler losgelassen wird.
+         * @param {Event} e - Das Event-Objekt (z.B. mouseup oder change)
+         */
+        function handleSeek(e) {
+            if (DOM.audioElement.src === '') {
+                 isDraggingSeek = false;
+                 return;
+            }
+
+            const duration = DOM.audioElement.duration;
+            // Verwende den aktuellen Wert des Sliders
+            const percentage = parseFloat(e.target.value); 
+            
+            const newTime = (percentage / 100) * duration;
+            // 1. Setze die neue Position im Audio-Element
+            DOM.audioElement.currentTime = newTime; 
+            
+            // 2. Führe eine sofortige UI-Aktualisierung durch
+            updateSeekSliderUI(newTime, duration);
+            
+            // 3. WICHTIG: Setze isDraggingSeek mit einem kurzen Timeout zurück.
+            // Dies verhindert, dass das nächste timeupdate-Event sofort wieder den Wert überschreibt.
+            setTimeout(() => {
+                isDraggingSeek = false; 
+            }, 50); 
+        }
+        
+        // 1. Bei Klick/Drücken: Aktiviere die Blockierung des automatischen Updates
+        DOM.seekSlider.addEventListener('mousedown', () => {
+            if (DOM.audioElement.src === '') return;
+            isDraggingSeek = true;
+        });
+        
+        // 2. Bei Loslassen: Führe das Seek aus. (Zwei Events für maximale Kompatibilität)
+        DOM.seekSlider.addEventListener('mouseup', handleSeek);
+        DOM.seekSlider.addEventListener('change', handleSeek); 
+
+        // 3. Beim Bewegen des Sliders (während isDraggingSeek = true): Aktualisiere nur die visuellen Elemente
+        DOM.seekSlider.addEventListener('input', (e) => {
+            if (DOM.audioElement.src === '' || !isDraggingSeek) return;
+            
+            const duration = DOM.audioElement.duration;
+            const percentage = parseFloat(e.target.value);
+            const newTime = (percentage / 100) * duration;
+            
+            // Aktualisiere nur Zeit-Text und Fortschrittsbalken-Hintergrund
+            DOM.currentTime.textContent = formatTime(newTime); 
+            DOM.seekSlider.style.setProperty('--progress', `${percentage}%`);
+        });
+
+
+        // --- Allgemeine Event Listener ---
+        
+        DOM.addBtn.addEventListener('click', () => DOM.fileInput.click());
+        DOM.fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+            e.target.value = null; 
+        });
+        
+        DOM.clearBtn.addEventListener('click', () => {
+            DOM.audioElement.pause();
+            DOM.audioElement.src = '';
+
+            playlist.forEach(song => { if (song.blobUrl) URL.revokeObjectURL(song.blobUrl); });
+            
+            playlist = [];
+            audioFiles = {};
+            currentIndex = -1;
+            isPlaying = false;
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+            renderPlaylist();
+            updateSongUI({ title: 'Titel', artist: 'Interpret' });
+            DOM.coverImage.src = "https://placehold.co/192x192/000000/ffffff?text=W%C3%A4hle+Musik";
+            updatePlayPauseButton(false);
+            updateSeekSliderUI(0, 1);
+            DOM.durationTime.textContent = '0:00';
+        });
+
+        DOM.playPauseBtn.addEventListener('click', togglePlayPause);
+        DOM.nextBtn.addEventListener('click', playNext);
+        DOM.prevBtn.addEventListener('click', () => {
+            if (playlist.length === 0) return;
+            // Modulo-Arithmetik für zyklische Wiedergabe
+            const prevIndex = (currentIndex - 1 + playlist.length) % playlist.length;
+            playSong(prevIndex);
+        });
+
+        DOM.volumeSlider.addEventListener('input', (e) => {
+            // Aktualisiert die Lautstärke direkt im nativen Audio-Element
+            DOM.audioElement.volume = parseFloat(e.target.value) / 100;
+        });
+
+
+        // --- Initialisierung ---
+        window.onload = () => {
+            loadPlaylist(); 
+            updateSeekSliderUI(0, 1); 
+            // Setzt die initiale Lautstärke basierend auf dem Slider-Wert
+            DOM.audioElement.volume = DOM.volumeSlider.value / 100; 
+        };
+        
+    </script>
+
+</body>
+</html>
