@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realistisches Klavier (Sampler)</title>
+    <!-- Lade Tailwind CSS für responsives Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lade Inter-Font -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #262626; /* Dunkelgrauer Hintergrund */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* Container für die Tastatur */
+        #keyboard-container {
+            position: relative;
+            display: flex;
+            width: 100%;
+            max-width: 900px;
+            margin: 20px auto;
+            border: 4px solid #171717;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* Generische Taste */
+        .key {
+            height: 100%;
+            border-radius: 0 0 8px 8px;
+            box-sizing: border-box;
+            cursor: pointer;
+            transition: background-color 0.05s ease, transform 0.05s ease;
+        }
+
+        /* Weiße Tasten */
+        .white-key {
+            width: calc(100% / 15); /* 15 Tasten in 2 Oktaven + 2 Tasten */
+            height: 200px;
+            background-color: #f3f4f6;
+            border: 1px solid #d1d5db;
+            border-top: none;
+            z-index: 1;
+            /* Wichtig: Kein Margin-Right mehr, die Breite wird exakt über JS gesteuert */
+        }
+        .white-key.active {
+            background-color: #facc15; /* Gelb bei Aktivierung */
+            transform: translateY(2px);
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Schwarze Tasten */
+        .black-key {
+            height: 120px;
+            background-color: #1f2937;
+            border: 1px solid #111827;
+            border-top: none;
+            z-index: 2;
+            position: absolute;
+            top: 0;
+            /* Kein transform: translateX(-50%) hier mehr, da JS die linke Kante berechnet */
+        }
+        .black-key.active {
+            background-color: #f59e0b; /* Dunkleres Gelb bei Aktivierung */
+            transform: translateY(2px);
+            box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.2);
+        }
+
+    </style>
+    <!-- Lade Tone.js für die Klangerzeugung -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+</head>
+<body class="bg-gray-900">
+
+    <div class="w-full max-w-lg bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+        <h1 class="text-2xl font-bold text-center text-white mb-4">Realistisches Klavier</h1>
+        
+        <!-- MIDI & Lade-Status -->
+        <div class="flex flex-col md:flex-row justify-between items-center text-sm mb-4 space-y-2 md:space-y-0">
+            <p id="loading-status" class="text-yellow-400 font-semibold">Lade Klavier-Samples...</p>
+            <p id="midi-status" class="text-red-400">MIDI-Status: Keine Geräte gefunden.</p>
+        </div>
+
+        <!-- Start-Button (für AudioContext) -->
+        <button id="startButton" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition duration-150">
+            Audio starten (Klick/Tipp)
+        </button>
+    </div>
+
+    <!-- Klaviertastatur -->
+    <div id="keyboard-container">
+        <!-- Tasten werden hier via JavaScript eingefügt -->
+    </div>
+
+    <!-- Hinweise zur Tastaturbelegung -->
+    <div class="w-full max-w-lg mt-6 p-4 bg-gray-800 rounded-lg shadow">
+        <h3 class="text-lg font-semibold text-white mb-2">Tastatur-Belegung (Computer)</h3>
+        <p class="text-gray-400 text-sm">Weiße Tasten: `A S D F G H J K L Ö Ä Y X C V`</p>
+        <p class="text-gray-400 text-sm">Schwarze Tasten: `W E T Z U O P # 7 9`</p>
+    </div>
+
+    <script>
+        // --- Tone.js Initialisierung ---
+        
+        // Der Sampler ist entscheidend für den realistischen Klang, da er echte Klavier-Samples abspielt.
+        const pianoSampler = new Tone.Sampler({
+            urls: {
+                "C3": "C3.mp3",
+                "D#3": "Ds3.mp3",
+                "F#3": "Fs3.mp3",
+                "A3": "A3.mp3",
+                "C4": "C4.mp3",
+                "D#4": "Ds4.mp3",
+                "F#4": "Fs4.mp3",
+                "A4": "A4.mp3",
+                "C5": "C5.mp3"
+            },
+            baseUrl: "https://tonejs.github.io/audio/salamander/",
+            release: 1.5, 
+            onload: () => {
+                document.getElementById('loading-status').textContent = "Sampler geladen. Bereit zum Spielen.";
+                document.getElementById('loading-status').classList.remove('text-yellow-400');
+                document.getElementById('loading-status').classList.add('text-green-400');
+                // Versuche, den AudioContext automatisch zu starten
+                if (Tone.context.state !== 'running') {
+                    Tone.start(); 
+                }
+            }
+        }).toDestination();
+
+
+        // --- Audio Kontext Start ---
+        const startButton = document.getElementById('startButton');
+        startButton.addEventListener('click', () => {
+            if (Tone.context.state !== 'running') {
+                Tone.start().then(() => {
+                    startButton.textContent = "Audio gestartet.";
+                    startButton.disabled = true;
+                    startButton.classList.replace('bg-blue-600', 'bg-green-600');
+                }).catch(err => {
+                    console.error("Fehler beim Starten des Audio Context:", err);
+                    startButton.textContent = "Starten fehlgeschlagen.";
+                    startButton.classList.replace('bg-blue-600', 'bg-red-600');
+                });
+            }
+        });
+
+
+        // --- Tastatur Definition ---
+        
+        // Noten von C3 bis C5 (2 Oktaven + 1 Note)
+        const notes = [
+            // C3 Oktave
+            { note: "C3", key: "a", type: "white" },
+            { note: "C#3", key: "w", type: "black" },
+            { note: "D3", key: "s", type: "white" },
+            { note: "D#3", key: "e", type: "black" },
+            { note: "E3", key: "d", type: "white" },
+            { note: "F3", key: "f", type: "white" },
+            { note: "F#3", key: "t", type: "black" },
+            { note: "G3", key: "g", type: "white" },
+            { note: "G#3", key: "z", type: "black" },
+            { note: "A3", key: "h", type: "white" },
+            { note: "A#3", key: "u", type: "black" },
+            { note: "B3", key: "j", type: "white" },
+            // C4 Oktave
+            { note: "C4", key: "k", type: "white" },
+            { note: "C#4", key: "o", type: "black" },
+            { note: "D4", key: "l", type: "white" },
+            { note: "D#4", key: "p", type: "black" },
+            { note: "E4", key: "ö", type: "white" },
+            { note: "F4", key: "ä", type: "white" },
+            { note: "F#4", key: "#", type: "black" }, 
+            { note: "G4", key: "y", type: "white" }, 
+            { note: "G#4", key: "7", type: "black" },
+            { note: "A4", key: "x", type: "white" },
+            { note: "A#4", key: "9", type: "black" },
+            { note: "B4", key: "c", type: "white" },
+            // C5
+            { note: "C5", key: "v", type: "white" } 
+        ];
+
+        let keysDown = {}; 
+        let midiMap = {}; 
+
+        const keyboardContainer = document.getElementById('keyboard-container');
+        let whiteKeyIndex = 0; // Zähler für die Positionierung der weißen Tasten
+
+        // Konstanten für die Tastenbreite
+        const TOTAL_WHITE_KEYS = 15;
+        const WHITE_WIDTH_PERCENT = 100 / TOTAL_WHITE_KEYS;
+        const BLACK_WIDTH_PERCENT = WHITE_WIDTH_PERCENT * 0.6; // Schwarze Taste ist 60% so breit wie weiß
+
+        // --- UI-Erzeugung ---
+        
+        notes.forEach((item, index) => {
+            const keyElement = document.createElement('div');
+            keyElement.dataset.note = item.note;
+            keyElement.dataset.key = item.key;
+            keyElement.classList.add('key', 'text-xs', 'absolute', 'flex', 'justify-center', 'items-end', 'pb-2');
+            
+            // Finde die entsprechende MIDI-Note
+            const midiNote = Tone.Midi(item.note).toMidi();
+            keyElement.dataset.midi = midiNote;
+            midiMap[midiNote] = keyElement;
+
+            if (item.type === "white") {
+                keyElement.classList.add('white-key');
+                
+                // Positionierung der weißen Taste
+                const leftPosition = (whiteKeyIndex / TOTAL_WHITE_KEYS) * 100; // Prozentuale Position
+                keyElement.style.left = `${leftPosition}%`;
+                keyElement.style.width = `${WHITE_WIDTH_PERCENT}%`;
+                keyElement.style.zIndex = 1;
+
+                // Noten-Anzeige auf der Taste
+                keyElement.innerHTML = `<span class="text-gray-600">${item.note.replace('3', '₁').replace('4', '₂').replace('5', '₃')}</span>`;
+                keyElement.innerHTML += `<span class="absolute bottom-1 text-xs text-gray-500">${item.key.toUpperCase()}</span>`;
+
+                whiteKeyIndex++;
+                
+            } else { // Black Key
+                keyElement.classList.add('black-key');
+                
+                // FIX: Korrekte Berechnung der Positionierung
+                // Die schwarze Taste muss zwischen der vorherigen und der aktuellen weißen Taste sitzen.
+                // Die Position (linke Kante) ist: (Index der vorherigen weißen Taste * WHITE_WIDTH_PERCENT) - (BLACK_WIDTH_PERCENT / 2)
+                
+                // Die Anzahl der weißen Tasten, die vor der aktuellen schwarzen Taste platziert wurden, ist whiteKeyIndex.
+                const whiteKeysBefore = whiteKeyIndex; 
+                
+                const leftPosition = (whiteKeysBefore * WHITE_WIDTH_PERCENT) - (BLACK_WIDTH_PERCENT / 2);
+                
+                keyElement.style.left = `${leftPosition}%`;
+                keyElement.style.width = `${BLACK_WIDTH_PERCENT}%`;
+                keyElement.style.zIndex = 3;
+
+                // Tasten-Anzeige auf der schwarzen Taste
+                keyElement.innerHTML = `<span class="text-gray-400">${item.key.toUpperCase()}</span>`;
+            }
+            
+            keyboardContainer.appendChild(keyElement);
+            
+            // --- Maus & Touch Events ---
+            keyElement.addEventListener('mousedown', (e) => handleStart(item.note, keyElement));
+            keyElement.addEventListener('mouseup', (e) => handleEnd(item.note, keyElement));
+            // Fängt ab, wenn die Maus die Taste verlässt, während sie gedrückt gehalten wird
+            keyElement.addEventListener('mouseleave', (e) => {
+                if (keyElement.classList.contains('active')) {
+                    handleEnd(item.note, keyElement);
+                }
+            });
+
+            // Für Touch-Geräte
+            keyElement.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleStart(item.note, keyElement);
+            }, { passive: false });
+            keyElement.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                handleEnd(item.note, keyElement);
+            });
+            keyElement.addEventListener('touchcancel', (e) => {
+                e.preventDefault();
+                handleEnd(item.note, keyElement);
+            });
+        });
+
+        // --- Noten Wiedergabe Funktionen ---
+        
+        function handleStart(note, element) {
+            if (element.classList.contains('active')) return;
+            
+            // Verwende Tone.now() für präzises Timing
+            pianoSampler.triggerAttack(note, Tone.now());
+            element.classList.add('active');
+        }
+
+        function handleEnd(note, element) {
+            // Die Release-Phase ist im Sampler definiert (release: 1.5)
+            element.classList.remove('active');
+        }
+
+        // --- Computertastatur Events ---
+        
+        const computerKeyMap = notes.reduce((map, item) => {
+            map[item.key] = item.note;
+            return map;
+        }, {});
+        
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            const note = computerKeyMap[key];
+
+            if (note && !keysDown[key]) {
+                e.preventDefault(); 
+                keysDown[key] = true;
+                
+                const targetElement = document.querySelector(`[data-key="${key}"]`);
+                if (targetElement) {
+                    handleStart(note, targetElement);
+                }
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            const note = computerKeyMap[key];
+            
+            if (note && keysDown[key]) {
+                e.preventDefault();
+                delete keysDown[key];
+                
+                const targetElement = document.querySelector(`[data-key="${key}"]`);
+                if (targetElement) {
+                    handleEnd(note, targetElement);
+                }
+            }
+        });
+
+
+        // --- Web MIDI API Logik ---
+        
+        const midiStatusElement = document.getElementById('midi-status');
+
+        function initializeMidi() {
+            if (navigator.requestMIDIAccess) {
+                navigator.requestMIDIAccess().then(onMIDISuccess, onMIDIFailure);
+            } else {
+                midiStatusElement.textContent = "MIDI-Eingabe wird von diesem Browser nicht unterstützt.";
+                midiStatusElement.classList.replace('text-red-400', 'text-yellow-400');
+            }
+        }
+
+        function onMIDISuccess(midiAccess) {
+            // Listener für Statusänderungen (z.B. neues Gerät angeschlossen)
+            midiAccess.onstatechange = updateMidiDevices;
+            updateMidiDevices(midiAccess);
+        }
+
+        function onMIDIFailure(error) {
+            midiStatusElement.textContent = `MIDI-Zugriff verweigert oder Fehler: ${error.name}`;
+            console.error("Fehler beim Abfragen des MIDI-Zugriffs:", error);
+        }
+
+        function updateMidiDevices(midiAccess) {
+            const inputs = midiAccess.inputs;
+            let deviceCount = 0;
+
+            // Suche nach MIDI-Eingängen
+            inputs.forEach((midiInput) => {
+                deviceCount++;
+                // Füge einen Event-Listener für MIDI-Nachrichten hinzu
+                midiInput.onmidimessage = handleMIDIMessage;
+            });
+
+            if (deviceCount > 0) {
+                midiStatusElement.textContent = `MIDI-Status: ${deviceCount} Gerät(e) verbunden.`;
+                midiStatusElement.classList.replace('text-red-400', 'text-green-400');
+            } else {
+                midiStatusElement.textContent = "MIDI-Status: Keine Geräte gefunden.";
+                midiStatusElement.classList.replace('text-green-400', 'text-red-400');
+            }
+        }
+
+        function handleMIDIMessage(message) {
+            const command = message.data[0];
+            const midiNote = message.data[1]; 
+            const velocity = message.data.length > 2 ? message.data[2] : 0; 
+
+            // 144: Note On, 128: Note Off
+            if (command === 144 && velocity > 0) {
+                // Note ON
+                const noteName = Tone.Midi(midiNote).toNote();
+                const element = midiMap[midiNote];
+
+                if (element) {
+                    pianoSampler.triggerAttack(noteName, Tone.now(), velocity / 127);
+                    element.classList.add('active');
+                }
+            } else if (command === 128 || (command === 144 && velocity === 0)) {
+                // Note OFF
+                const element = midiMap[midiNote];
+                if (element) {
+                    element.classList.remove('active');
+                }
+            }
+        }
+        
+        // Starte die MIDI-Initialisierung, sobald das Fenster geladen ist
+        window.onload = initializeMidi;
+
+    </script>
+</body>
+</html>
