@@ -32,13 +32,17 @@
             cursor: pointer;
             transition: all 0.1s ease-out;
             border: 3px solid #6b7280;
-            position: relative;
             user-select: none;
             touch-action: manipulation;
+            
+            /* Wichtig: position: absolute beibehalten */
+            position: absolute;
+            /* FIX: top: 50%; und left: 50% hier entfernt, um Konflikte mit dem Ding und den radialen Transforms zu vermeiden. */
         }
 
         .note-pad:active, .note-pad.active {
-            transform: scale(0.95);
+            /* !important, um JS-Transform zu überschreiben, falls nötig */
+            transform: scale(0.95) !important; 
             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.5), 0 1px 2px -1px rgba(0, 0, 0, 0.4), inset 0 0 10px #fcd34d;
             border-color: #fcd34d;
         }
@@ -65,7 +69,6 @@
         #ding-pad {
             width: 120px;
             height: 120px;
-            margin: 20px auto;
             background-color: #374151;
             font-size: 1.5rem;
         }
@@ -86,23 +89,29 @@
         <p class="text-center text-gray-400 mb-6">Spiele die D-Kurd Skala.</p>
 
         <!-- Statusmeldung für Audio-Initialisierung -->
-        <div id="statusMessage" class="bg-blue-800 border-l-4 border-blue-500 text-blue-100 p-4 mb-6 rounded-xl shadow-inner cursor-pointer" onclick="Tone.start(); this.style.display='none';">
-            <p class="font-semibold">Klicken/Tippen Sie hier, um den Ton zu aktivieren</p>
-            <p class="text-sm">Der Browser benötigt eine Geste, um Audio zu starten.</p>
+        <div id="statusMessage" class="bg-blue-800 border-l-4 border-blue-500 text-blue-100 p-4 mb-6 rounded-xl shadow-inner">
+            <p class="font-semibold mb-2">Audio ist deaktiviert</p>
+            <p class="text-sm mb-4">Der Browser benötigt eine Geste (Klick/Tipp), um den Ton zu aktivieren.</p>
+            <button id="startButton" class="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg transition duration-150">
+                Ton aktivieren und starten
+            </button>
         </div>
 
         <!-- Handpan-Layout (Simulierte Schale) -->
         <div class="relative flex justify-center items-center bg-gray-600 rounded-full w-full aspect-square max-h-[500px] mx-auto p-4 shadow-inner-xl" style="background: radial-gradient(#4b5563, #1f2937);">
             
-            <!-- Das zentrale Ding (D3) -->
-            <div id="ding-pad" class="note-pad text-gray-100" data-note="D3" data-key="a">
+            <!-- Das zentrale Ding (D3) - FIX: Zentrierung ist jetzt über diese Tailwind-Klassen garantiert -->
+            <div id="ding-pad" 
+                 class="note-pad text-gray-100 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" 
+                 data-note="D3" 
+                 data-key="a">
                 <span class="text-xs text-yellow-300">Ding</span>
                 <span class="note-text text-2xl font-bold">D3</span>
                 <span class="key-text text-sm mt-1 text-gray-300">(A)</span>
             </div>
 
             <!-- Die Notenfelder (dynamisch positioniert) -->
-            <div id="note-pads-container" class="absolute w-full h-full">
+            <div id="note-pads-container" class="absolute inset-0">
                 <!-- Noten werden via JavaScript eingefügt -->
             </div>
 
@@ -120,35 +129,27 @@
     <script>
         // --- Tone.js Initialisierung ---
         
-        // Handpan-Sound-Approximation: MetalSynth für Percussion-Klänge
-        // mit einem langen Release/Decay für die Resonanz.
         const handpanSynth = new Tone.MembraneSynth({
-            pitchDecay: 0.008, // Leichter Pitch-Drop für metallischen Klang
+            pitchDecay: 0.008, 
             octaves: 0.8,
             envelope: {
                 attack: 0.001,
-                decay: 1.5, // Langer Zerfall für Sustain
+                decay: 1.5,
                 sustain: 0.0,
                 release: 0.5
             }
         });
 
-        // Hinzufügen von Reverb (Hall) für die Schalen-Resonanz
         const reverb = new Tone.Reverb({
-            decay: 3.5, // Langer Hall
-            wet: 0.3 // Mittlere Hall-Intensität
+            decay: 3.5,
+            wet: 0.3
         }).toDestination();
 
-        // Hinzufügen von Chorus für eine reichere, schwebende Textur (Obertöne)
         const chorus = new Tone.Chorus(4, 2.5, 0.5).connect(reverb);
-        
-        // Verbinde den Synth mit der Effektkette
         handpanSynth.connect(chorus);
         
-        // Noten der D-Kurd Handpan Skala und die entsprechenden Tastaturzuordnungen
-        // (Wähle Tasten A-K für Konsistenz und Nähe)
         const notes = [
-            { note: "D3", key: "a", displayKey: "A", isDing: true }, // Ding (Zentrum)
+            { note: "D3", key: "a", displayKey: "A", isDing: true },
             { note: "A3", key: "s", displayKey: "S" },
             { note: "C4", key: "d", displayKey: "D" },
             { note: "D4", key: "f", displayKey: "F" },
@@ -158,31 +159,25 @@
             { note: "C5", key: "k", displayKey: "K" }
         ];
 
-        let keysDown = {}; // Verfolgt gedrückte Tasten (physisch)
-        let activeTouchNotes = {}; // Verfolgt aktive Touch-Events
+        let keysDown = {};
+        let activeTouchNotes = {};
 
-        // Funktion zur Noten-Start
         function playNote(note, element) {
-            // Audio Context muss gestartet sein
             if (Tone.context.state !== 'running') {
                 Tone.start();
                 document.getElementById('statusMessage').style.display = 'none';
             }
 
-            // Spiele die Note
             handpanSynth.triggerAttackRelease(note, "1.5n");
 
-            // Visuelles Feedback
             if (element) {
                 element.classList.add('active', 'playing');
-                // Entferne die 'playing' Klasse nach kurzer Zeit, um den Pulse-Effekt neu zu triggern
                 setTimeout(() => {
                     element.classList.remove('playing');
                 }, 50);
             }
         }
 
-        // Funktion zur Noten-Ende
         function stopNote(element) {
             if (element) {
                 element.classList.remove('active');
@@ -190,12 +185,22 @@
         }
 
         // --- UI-Erzeugung und Event-Handling ---
-
         const notePadsContainer = document.getElementById('note-pads-container');
         const keyGuideElement = document.getElementById('key-guide');
         const dingPad = document.getElementById('ding-pad');
-        const numPads = notes.length - 1; // Ohne Ding
+        const numPads = notes.length - 1;
 
+        // Event-Listener für den Start-Button
+        const startButton = document.getElementById('startButton');
+        const statusMessage = document.getElementById('statusMessage');
+
+        if (startButton) {
+            startButton.addEventListener('click', () => {
+                Tone.start();
+                statusMessage.style.display = 'none';
+            });
+        }
+        
         // Erzeuge die Tasten-Elemente im DOM
         notes.forEach((item, index) => {
             
@@ -206,24 +211,26 @@
 
 
             if (item.isDing) {
-                // Das Ding ist bereits im HTML statisch definiert, nur Events anhängen
                 const element = dingPad;
                 setupEvents(element, item.note, item.key);
                 return;
             }
 
             // 2. Die umliegenden Notenfelder erzeugen
-            const angle = (index - 1) * (360 / numPads); // Starte bei 0 (index 1)
-            const radius = 170; // Radius in Pixel oder % (relative Positionierung)
+            const angle = (index - 1) * (360 / numPads);
+            const radius = 150; 
 
             // Berechne X/Y-Position basierend auf dem Winkel
-            const x = radius * Math.cos((angle - 90) * (Math.PI / 180)); // -90, um oben zu starten
+            const x = radius * Math.cos((angle - 90) * (Math.PI / 180));
             const y = radius * Math.sin((angle - 90) * (Math.PI / 180));
 
             const button = document.createElement('div');
+            // FIX: top/left auf 50% setzen, um den Startpunkt der Radialpositionierung zu bestimmen
+            button.style.top = '50%';
+            button.style.left = '50%';
+            
             button.classList.add(
                 'note-pad',
-                'absolute',
                 'bg-gray-500',
                 'text-gray-900',
                 'text-center'
@@ -231,7 +238,7 @@
             button.dataset.note = item.note;
             button.dataset.key = item.key;
             
-            // Setze die Position (zentriert relativ zum Elternelement)
+            // Setze die Position: (Zentrierung auf den Startpunkt) + (Radialer Offset)
             button.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
 
             button.innerHTML = `
@@ -248,18 +255,13 @@
         function setupEvents(element, note, key) {
             let isPressed = false;
             
-            // Mousedown/Touchstart (Note starten)
             const handleStart = (e) => {
-                // Verhindere Standard-Aktionen auf Touch
                 if (e.type.startsWith('touch')) e.preventDefault(); 
-
-                // Stelle sicher, dass wir nur einmal pro physischer Interaktion triggern
                 if (isPressed) return;
                 isPressed = true;
 
                 playNote(note, element);
 
-                // Für Touch-Events, speichere den Identifier, um 'touchend' korrekt zuordnen zu können
                 if (e.type === 'touchstart') {
                     for (let i = 0; i < e.changedTouches.length; i++) {
                         activeTouchNotes[e.changedTouches[i].identifier] = element;
@@ -267,13 +269,11 @@
                 }
             };
 
-            // Mouseup/Touchend (Note stoppen)
             const handleEnd = (e) => {
                 if (!isPressed) return;
                 isPressed = false;
                 stopNote(element);
                 
-                // Für Touch-Events, entferne den Identifier aus der Liste
                 if (e.type.startsWith('touch')) {
                      for (let i = 0; i < e.changedTouches.length; i++) {
                         delete activeTouchNotes[e.changedTouches[i].identifier];
@@ -281,16 +281,14 @@
                 }
             };
 
-            // Maus Events
             element.addEventListener('mousedown', handleStart);
             element.addEventListener('mouseup', handleEnd);
-            // Stopp, wenn Maus vom Button gezogen wird
             element.addEventListener('mouseleave', () => { if(isPressed) handleEnd({}) }); 
             
-            // Touch Events (Wichtig für mobile Geräte)
-            element.addEventListener('touchstart', handleStart);
+            // FIX: Touchstart mit { passive: false } für zuverlässigeres preventDefault auf mobilen Geräten
+            element.addEventListener('touchstart', handleStart, { passive: false });
             element.addEventListener('touchend', handleEnd);
-            element.addEventListener('touchcancel', handleEnd); // Falls Touch abgebrochen wird (z.B. durch Benachrichtigung)
+            element.addEventListener('touchcancel', handleEnd); 
         }
 
 
@@ -308,8 +306,12 @@
                 e.preventDefault(); 
                 keysDown[key] = true;
                 
-                const element = document.querySelector(`.note-pad[data-note="${note}"]`);
-                playNote(note, element);
+                // Element direkt über den eindeutigen data-key suchen
+                const targetElement = document.querySelector(`[data-key="${key}"]`);
+
+                if (targetElement) {
+                    playNote(note, targetElement);
+                }
             }
         });
 
@@ -320,17 +322,21 @@
                 e.preventDefault();
                 delete keysDown[key];
                 
-                const element = document.querySelector(`.note-pad[data-note="${note}"]`);
-                stopNote(element);
+                // Element direkt über den eindeutigen data-key suchen
+                const targetElement = document.querySelector(`[data-key="${key}"]`);
+
+                if (targetElement) {
+                    stopNote(targetElement);
+                }
             }
         });
         
         // Initialisiere Tone.js beim Laden, falls nötig
         window.addEventListener('load', () => {
             if (Tone.context.state !== 'running') {
-                document.getElementById('statusMessage').style.display = 'block';
+                statusMessage.style.display = 'block';
             } else {
-                document.getElementById('statusMessage').style.display = 'none';
+                statusMessage.style.display = 'none';
             }
         });
         
