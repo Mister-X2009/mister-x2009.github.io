@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My Projects</title>
+<title>Meine Projekte</title>
 
 <!-- Grundlegende SEO Meta-Tags -->
-<meta name="description" content="My showcase page">
-<meta name="keywords" content="GitHub, Apps, Programmierung, programing, code, useful">
-<meta name="author" content="clown_speck">
+<meta name="description" content="Übersicht meiner Projekte aus Physik, Chemie und Programmierung">
+<meta name="keywords" content="Projekte, Physik, Chemie, GitHub, Apps">
+<meta name="author" content="Ansgar">
 
 <!-- OpenGraph (Social Media Vorschau) -->
 <meta property="og:title" content="Meine Projekte">
 <meta property="og:description" content="Eine Übersicht meiner Projekte aus Physik, Chemie und Programmierung">
 <meta property="og:image" content="">
-<meta property="og:url" content="https:\\mister-x2009.github.io">
+<meta property="og:url" content="https://mister-x2009.github.io">
 <meta property="og:type" content="website">
 
 <!-- Favicon -->
@@ -59,11 +59,14 @@ async function fetchProjects() {
         const description = doc.querySelector('meta[name="description"]')?.content || 'Keine Beschreibung';
         const ogImage = doc.querySelector('meta[property="og:image"]')?.content || '';
 
+        // GitHub Pages URL für die Unterseite
+        const pageUrl = `https://${user}.github.io/${file.path}`;
+
         const div = document.createElement('div');
         div.className = 'project';
         div.innerHTML = `
           ${ogImage ? `<img src="${ogImage}" alt="${title}">` : ''}
-          <a href="${file.html_url}" target="_blank"><h2>${title}</h2></a>
+          <a href="${pageUrl}" target="_blank"><h2>${title}</h2></a>
           <p>${description}</p>
         `;
         container.appendChild(div);
