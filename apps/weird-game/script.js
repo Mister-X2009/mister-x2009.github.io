@@ -1,402 +1,438 @@
 /**
- * Pixel Unit RTS Prototype
- * * Engine-Architektur:
- * - Map: 256x256 Pixel.
- * - State: TypedArrays (Uint8) für Terrain, Besitzer, Farbe, Zielvektoren.
- * - Loop: Fixed Time Step (60 UPS - Updates per Second).
- * - Rendering: Schreiben in Uint32Array Puffer -> putImageData.
+ * Pixel Unit RTS - Slime Physics Engine
+ * * Physik-Logik:
+ * Anstatt Random-Walk nutzen wir eine Nachbarschaftsanalyse (Cellular Automata).
+ * 1. Move Score = (Distanz zum Ziel verringern) + (Anzahl Nachbarn erhöhen/halten).
+ * 2. Ein Pixel bewegt sich nur, wenn es dadurch nicht isoliert wird (Bubble-Effekt).
  */
 
 // --- KONFIGURATION ---
 const WIDTH = 256;
 const HEIGHT = 256;
 const SIZE = WIDTH * HEIGHT;
-const MAX_RESOURCE = 2000;
 
-// Farben (RGB Integer für 32-Bit Buffer: AABBGGRR in Little Endian)
-// 0: Empty, 1: Red, 2: Green, 3: Blue, 4: Yellow, 5: Wall, 6: Base
-const COLORS_HEX = [
-    0xFF000000, // 0: Schwarz (Leer)
+// Bit-Masken für Farben (ABGR Little Endian)
+const COLORS = [
+    0xFF000000, // 0: Leer
     0xFF4444FF, // 1: Rot
     0xFF44FF44, // 2: Grün
     0xFFFF4444, // 3: Blau
     0xFF44FFFF, // 4: Gelb
-    0xFF808080, // 5: Wand (Grau)
-    0xFFFFFFFF  // 6: Basis (Weiß)
+    0xFF808080, // 5: Wand
+    0xFFFFFFFF  // 6: Basis
 ];
 
-// Zyklus für Stein-Schere-Papier (1 > 2 > 3 > 4 > 1...)
-// Logic: if (attacker == defender - 1 || (attacker == 4 && defender == 1)) Win
-function beats(colorA, colorB) {
-    if (colorA === colorB) return 0; // Draw
-    if ((colorA === 1 && colorB === 2) || 
-        (colorA === 2 && colorB === 3) || 
-        (colorA === 3 && colorB === 4) || 
-        (colorA === 4 && colorB === 1)) {
-        return 1; // A wins
-    }
-    return -1; // B wins
-}
-
-// --- STATE MANAGEMENT ---
+// --- STATE ---
 const state = {
-    // 0: Leer, 1: P1, 2: AI/Enemy
-    owner: new Uint8Array(SIZE), 
-    // 0: None, 1-4: Unit Color, 5: Wall, 6: Base
-    type: new Uint8Array(SIZE), 
-    // Zielkoordinaten für "Fluid" Movement (gepackt x + y*256)
-    // 0 means no target.
-    target: new Uint32Array(SIZE),
+    type: new Uint8Array(SIZE),      // Welches Objekt? (0-6)
+    owner: new Uint8Array(SIZE),     // Welcher Spieler? (1=P1)
+    moved: new Uint8Array(SIZE),     // Locking für diesen Frame (verhindert Doppel-Moves)
+    visibility: new Uint8Array(SIZE),// Fog of War
     
-    // Fog of War (0: Hidden, 1: Visible, 2: Explored)
-    visibility: new Uint8Array(SIZE),
+    resources: 600,
+    selectedColor: 1,
+    baseIndex: 0,
     
-    resources: 500,
-    selectedColor: 1, // Start mit Rot
-    baseIndex: 0,     // Index der Basis
-    
-    // Player Input Targets (wohin sollen Einheiten fließen?)
-    clickTarget: null, // {x, y}
+    targetX: -1,
+    targetY: -1,
     recalling: false
 };
 
-// Canvas & Context
+// Canvas Init
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
+ctx.imageSmoothingEnabled = false; // WICHTIG für Pixel-Look
+
 const imgData = ctx.createImageData(WIDTH, HEIGHT);
 const buf32 = new Uint32Array(imgData.data.buffer);
 
-// --- INITIALISIERUNG ---
-
+// --- INIT ---
 function init() {
-    // 1. Map Generierung (Noise Simulation)
-    // Einfache Mauern erstellen
+    // Map Generierung (Leere Box mit zufälligen Hindernissen)
     for (let i = 0; i < SIZE; i++) {
-        if (Math.random() > 0.98) state.type[i] = 5; // Zufällige Wände
+        const x = i % WIDTH;
+        const y = Math.floor(i / WIDTH);
+        // Ränder oder Noise
+        if (x < 2 || x >= WIDTH-2 || y < 2 || y >= HEIGHT-2 || Math.random() > 0.992) {
+            state.type[i] = 5; // Wand
+        }
     }
     
-    // 2. Basis setzen (Mitte unten)
-    const bx = 128, by = 230;
+    // Basis in der Mitte platzieren
+    const bx = 128, by = 128;
     state.baseIndex = by * WIDTH + bx;
-    // Basis ist 3x3 Pixel groß
-    for(let y=-1; y<=1; y++) {
-        for(let x=-1; x<=1; x++) {
-            let idx = (by+y)*WIDTH + (bx+x);
+    // 3x3 Basis
+    for(let dy=-1; dy<=1; dy++) {
+        for(let dx=-1; dx<=1; dx++) {
+            let idx = (by+dy)*WIDTH + (bx+dx);
             state.type[idx] = 6;
             state.owner[idx] = 1;
+            state.type[idx-1] = 0; // Eingang freimachen
         }
     }
 
-    // 3. UI Bindings
     setupUI();
-
-    // 4. Start Loop
     requestAnimationFrame(gameLoop);
 }
 
-function setupUI() {
-    // Farbauswahl
-    document.querySelectorAll('.btn-color').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.btn-color').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            state.selectedColor = parseInt(e.target.dataset.color);
-            state.recalling = false;
-        });
-    });
-
-    // Spawn Button
-    document.getElementById('btn-spawn').addEventListener('click', () => {
-        spawnUnits(state.selectedColor, 20); // 20 Pixel spawnen
-    });
-
-    // Rückruf
-    document.getElementById('btn-recall').addEventListener('click', () => {
-        state.recalling = true;
-        state.clickTarget = null; // Ziel aufheben, Basis wird Ziel
-    });
-
-    // Export
-    document.getElementById('btn-export').addEventListener('click', exportMapLayer);
-
-    // Maus Input (Koordinaten Mapping)
-    canvas.addEventListener('mousedown', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = WIDTH / rect.width;
-        const scaleY = HEIGHT / rect.height;
-        
-        const tx = Math.floor((e.clientX - rect.left) * scaleX);
-        const ty = Math.floor((e.clientY - rect.top) * scaleY);
-        
-        // Rechte Maustaste: Rückruf, Linke: Move
-        if (e.button === 2) {
-            state.recalling = true;
-            state.clickTarget = null;
-        } else {
-            state.recalling = false;
-            state.clickTarget = {x: tx, y: ty};
-        }
-    });
-    
-    // Context Menu unterdrücken
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
-}
-
-// --- LOGIK CORE (Cellular Automata / Fluid) ---
-
-function spawnUnits(colorIdx, amount) {
-    if (state.resources < amount) amount = state.resources;
-    if (amount <= 0) return;
-
-    let spawned = 0;
-    // Spiral-Suche um die Basis für freien Platz
-    let x = state.baseIndex % WIDTH;
-    let y = Math.floor(state.baseIndex / WIDTH);
-    
-    for (let r = 2; r < 20; r++) { // Radius erhöhen
-        if (spawned >= amount) break;
-        for (let i = 0; i < r * 2 * Math.PI; i++) { // Kreis abtasten
-            let angle = (i / (r * 2)) * Math.PI * 2;
-            let sx = Math.floor(x + Math.cos(angle) * r);
-            let sy = Math.floor(y + Math.sin(angle) * r);
-            
-            if (sx >= 0 && sx < WIDTH && sy >= 0 && sy < HEIGHT) {
-                let idx = sy * WIDTH + sx;
-                if (state.type[idx] === 0) { // Wenn leer
-                    state.type[idx] = colorIdx;
-                    state.owner[idx] = 1; // Player 1
-                    // Ziel setzen (aktuelles Klickziel oder warten)
-                    state.target[idx] = state.clickTarget ? 
-                        (state.clickTarget.y * WIDTH + state.clickTarget.x) : 0;
-                    
-                    spawned++;
-                    state.resources--;
-                    if (spawned >= amount) break;
-                }
-            }
-        }
-    }
-    updateHUD();
-}
+// --- PHYSIK & BEWEGUNG (THE SLIME LOGIC) ---
 
 function update() {
-    // Performance: Wir iterieren über das Array. 
-    // Um Bias zu vermeiden (alle bewegen sich nur nach rechts unten),
-    // kann man die Iterationsrichtung jeden Frame wechseln (optional, hier einfach gehalten).
+    state.moved.fill(0); // Reset Move-Locks
 
-    // Globales Ziel definieren (Basis wenn Recall, sonst Klick)
-    let globalTargetIdx = 0;
-    if (state.recalling) globalTargetIdx = state.baseIndex;
-    else if (state.clickTarget) globalTargetIdx = state.clickTarget.y * WIDTH + state.clickTarget.x;
+    // Bestimme Zielkoordinaten
+    let tx = state.targetX;
+    let ty = state.targetY;
+    if (state.recalling) {
+        tx = state.baseIndex % WIDTH;
+        ty = Math.floor(state.baseIndex / WIDTH);
+    }
 
-    // Temp Array für Bewegungen, um Konflikte innerhalb eines Frames zu vermeiden?
-    // Für "Schleim"-Verhalten ist in-place Bearbeitung oft okay und chaotischer (organischer).
-    // Wir nutzen einen einfachen Stochastic-Ansatz.
-    
-    // Random Offset für Iteration um Musterbildung zu brechen
-    const startOffset = Math.floor(Math.random() * SIZE);
+    // Zufälliger Offset für Iteration (verhindert Bias oben-links nach unten-rechts)
+    // Wir iterieren 4-mal durch Teilbereiche oder einfach randomisiert, 
+    // hier: Linear mit Random-Start reicht für einfache CA.
+    const startOff = Math.floor(Math.random() * SIZE);
 
     for (let k = 0; k < SIZE; k++) {
-        let i = (k + startOffset) % SIZE; // Wraparound index
+        const i = (k + startOff) % SIZE;
+        
+        // Nur aktive Einheiten des Spielers verarbeiten
+        if (state.owner[i] !== 1 || state.type[i] > 4) continue;
 
-        // Nur verarbeiten wenn eigene Unit (Typ 1-4)
-        if (state.owner[i] !== 1 || state.type[i] < 1 || state.type[i] > 4) continue;
-
-        // Rückruf Logic: Wenn an Basis angekommen -> Ressource
-        if (state.recalling) {
-            let dx = (state.baseIndex % WIDTH) - (i % WIDTH);
-            let dy = Math.floor(state.baseIndex / WIDTH) - Math.floor(i / WIDTH);
-            if (dx*dx + dy*dy < 9) { // Nahe genug
-                state.type[i] = 0;
-                state.owner[i] = 0;
-                state.resources++;
-                continue;
-            }
+        // 1. Rückruf Logik (Ressourcen zurückgewinnen)
+        if (state.recalling && isNear(i, state.baseIndex, 4)) {
+            state.type[i] = 0; state.owner[i] = 0;
+            state.resources++;
+            continue;
         }
 
-        // Bewegung
-        let currentTarget = globalTargetIdx;
+        // 2. Slime Bewegung
+        // Wenn kein Ziel gesetzt ist, machen wir nur Kohäsion (Kuscheln)
+        // Wenn Ziel gesetzt ist, machen wir Bewegung + Kohäsion
+        const hasTarget = (tx !== -1 && ty !== -1);
         
-        if (currentTarget !== 0) {
-            moveUnit(i, currentTarget);
+        if (hasTarget) {
+            moveSlime(i, tx, ty);
         } else {
-            // Idle Verhalten: "Kriechen" oder stehen bleiben
-            // jitter(i); 
+            moveCohesionOnly(i);
         }
     }
-    
+
     updateFogOfWar();
     updateHUD();
 }
 
-function moveUnit(idx, targetIdx) {
+/**
+ * Kernlogik für Slime-Verhalten:
+ * Ein Pixel bewegt sich bevorzugt dorthin, wo es:
+ * A) Näher am Ziel ist.
+ * B) MEHR oder GLEICHVIELE Nachbarn hat wie vorher (Oberflächenspannung).
+ */
+function moveSlime(idx, tx, ty) {
+    if (state.moved[idx]) return; // Schon bewegt diesen Frame
+
     const cx = idx % WIDTH;
     const cy = Math.floor(idx / WIDTH);
-    const tx = targetIdx % WIDTH;
-    const ty = Math.floor(targetIdx / WIDTH);
+    const myColor = state.type[idx];
 
-    // Einfacher Richtungsvektor
+    // Richtung zum Ziel
     let dx = Math.sign(tx - cx);
     let dy = Math.sign(ty - cy);
 
     // Wenn wir schon da sind
     if (dx === 0 && dy === 0) return;
 
-    // Nächster Schritt (gewünscht)
-    let nx = cx + dx;
-    let ny = cy + dy;
-    let nIdx = ny * WIDTH + nx;
-
-    // Kollisionsprüfung & Kampf
-    if (isValid(nx, ny)) {
-        interact(idx, nIdx);
-    } else {
-        // Blockiert? Versuche Ausweichbewegung (Semi-Random für Fluidität)
-        // Wenn horizontal blockiert, versuche diagonal oder vertikal
-        if (Math.random() > 0.5) {
-            // Versuch X-Achse zu halten, Y ändern
-            interact(idx, (cy + (Math.random() > 0.5 ? 1 : -1)) * WIDTH + (cx + dx));
-        } else {
-             // Versuch Y-Achse zu halten, X ändern
-            interact(idx, (cy + dy) * WIDTH + (cx + (Math.random() > 0.5 ? 1 : -1)));
-        }
-    }
-}
-
-function isValid(x, y) {
-    return x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT;
-}
-
-function interact(fromIdx, toIdx) {
-    if (toIdx < 0 || toIdx >= SIZE) return;
-
-    const fromType = state.type[fromIdx];
-    const toType = state.type[toIdx];
-    const toOwner = state.owner[toIdx];
-
-    // 1. Leeres Feld: Bewegen
-    if (toType === 0) {
-        // Swap (Bewegen)
-        state.type[toIdx] = fromType;
-        state.owner[toIdx] = state.owner[fromIdx];
-        state.type[fromIdx] = 0;
-        state.owner[fromIdx] = 0;
-        return;
-    }
-
-    // 2. Wand: Blockiert (Nichts tun)
-    if (toType === 5) return;
-
-    // 3. Eigene Basis: Blockiert
-    if (toType === 6) return;
-
-    // 4. Eigene Einheit (gleiche Farbe): Blockiert (Blob Bildung)
-    if (state.owner[fromIdx] === toOwner && fromType === toType) return;
-
-    // 5. Gegner oder andere Farbe (Hier könnte Friendly Fire sein wenn gewünscht)
-    // Aktuell: Kampf auch zwischen eigenen Farben möglich? 
-    // Im Prompt steht: "Wenn Pixel verschiedener Farben aufeinandertreffen"
-    if (fromType !== toType) {
-        const result = beats(fromType, toType);
-        if (result === 1) {
-            // Angreifer gewinnt -> Ersetzt Verteidiger
-            state.type[toIdx] = fromType;
-            state.owner[toIdx] = state.owner[fromIdx];
-            state.type[fromIdx] = 0;
-            state.owner[fromIdx] = 0;
-        } else if (result === -1) {
-            // Verteidiger gewinnt -> Angreifer stirbt
-            state.type[fromIdx] = 0;
-            state.owner[fromIdx] = 0;
-        } else {
-            // Gleichstand (z.B. 50% Chance)
-            if (Math.random() > 0.5) {
-                 state.type[fromIdx] = 0; // Einer stirbt zufällig
-                 state.owner[fromIdx] = 0;
-            }
-        }
-    }
-}
-
-// --- RENDERING & FOW ---
-
-function updateFogOfWar() {
-    // Simpler FoW: Alles löschen (oder dimmen), dann um jede Unit herum aufdecken.
-    // Performance: Für Prototyp einfach Distanz um Einheiten.
-    // Optimierung: Floodfill oder niedrigere Auflösung wäre besser.
-    // Hier: Simple "Active Tiles" Liste könnte helfen, aber wir iterieren eh.
+    // Wir prüfen 3 Kandidaten-Positionen:
+    // 1. Direkt zum Ziel
+    // 2. Diagonal/Seitlich (um Hindernisse zu fließen)
+    // Wir wollen "Kleben" bleiben.
     
-    // Reset Visibility Layer (0 = Fog, 1 = Visible)
-    // Wir lassen "Explored" (2) weg für Einfachheit oder machen nur temporary FoW
-    state.visibility.fill(0);
+    const currentNeighbors = countNeighbors(cx, cy, myColor);
+    
+    // Kandidaten-Offsets (Priorität: Direkt, dann Alternativen)
+    const moves = [
+        {x: dx, y: dy},           // Ideal
+        {x: dx, y: 0},            // Nur X
+        {x: 0, y: dy},            // Nur Y
+        {x: (Math.random()<.5?1:-1), y: (Math.random()<.5?1:-1)} // Random Jitter (bricht Blockaden)
+    ];
 
-    // Basis immer sichtbar
-    markVisible(state.baseIndex % WIDTH, Math.floor(state.baseIndex / WIDTH), 30);
+    let bestMove = null;
+    let bestScore = -999;
 
-    // Iteration über alle Pixel ist zu teuer für Radius-Check pro Pixel (256x256 * Radius).
-    // Besser: Sichtbarkeit nur grob berechnen oder Sichtfeld der Einheiten ist klein (3px).
-    const viewRadius = 8;
-    const r2 = viewRadius * viewRadius;
-
-    for (let i = 0; i < SIZE; i++) {
-        if (state.owner[i] === 1) { // Wenn eigene Einheit
-             let ux = i % WIDTH;
-             let uy = Math.floor(i / WIDTH);
-             
-             // Sehr simpler Box-Check für Performance statt Kreis
-             for (let dy = -viewRadius; dy <= viewRadius; dy+=2) {
-                 for (let dx = -viewRadius; dx <= viewRadius; dx+=2) {
-                     let vx = ux + dx;
-                     let vy = uy + dy;
-                     if (vx >= 0 && vx < WIDTH && vy >= 0 && vy < HEIGHT) {
-                         state.visibility[vy * WIDTH + vx] = 1;
-                     }
-                 }
-             }
+    for (let m of moves) {
+        if (m.x === 0 && m.y === 0) continue;
+        
+        const nx = cx + m.x;
+        const ny = cy + m.y;
+        
+        if (!isValid(nx, ny)) continue;
+        
+        const nIdx = ny * WIDTH + nx;
+        
+        // Kollision / Kampf Check
+        if (state.type[nIdx] !== 0) {
+            // Interaktion (Kampf) möglich?
+            if (state.owner[nIdx] !== 1 && state.type[nIdx] !== 5 && state.type[nIdx] !== 6) {
+                // Kampf!
+                interact(idx, nIdx);
+                state.moved[idx] = 1; // Aktion verbraucht
+                return;
+            }
+            continue; // Blockiert durch Wand/Freund
         }
+
+        // --- SLIME SCORE BERECHNUNG ---
+        // Wie viele Freunde hätte ich an der neuen Position?
+        const newNeighbors = countNeighbors(nx, ny, myColor, idx); // Ignoriere mich selbst an alter Pos
+        
+        // Score Bestandteile:
+        // 1. Fortschritt zum Ziel (kleiner Faktor)
+        // 2. Nachbarn behalten (großer Faktor -> Kohäsion)
+        
+        let score = 0;
+        
+        // Ziel-Anziehung
+        const distOld = Math.abs(tx - cx) + Math.abs(ty - cy);
+        const distNew = Math.abs(tx - nx) + Math.abs(ty - ny);
+        if (distNew < distOld) score += 2; // Leichter Zug zum Ziel
+        
+        // Kohäsion (Das Wichtigste für den Bubble-Effekt)
+        // Wenn ich isoliert bin (wenig Nachbarn), MUSS ich zu mehr Nachbarn.
+        // Wenn ich im Blob bin (viele Nachbarn), darf ich fließen.
+        
+        if (newNeighbors >= currentNeighbors) {
+            score += 5; // Belohnung für Zusammenhalt
+        } else if (newNeighbors < 2) {
+            score -= 10; // Strafe für Ablösen (Tropfen vermeiden)
+        }
+        
+        // Randomness für organisches "Wabbeln"
+        score += Math.random() * 2;
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestMove = {nx, ny, nIdx};
+        }
+    }
+
+    // Ausführen wenn Score gut genug
+    if (bestMove && bestScore > 0) {
+        // Swap pixels
+        state.type[bestMove.nIdx] = state.type[idx];
+        state.owner[bestMove.nIdx] = state.owner[idx];
+        state.type[idx] = 0;
+        state.owner[idx] = 0;
+        state.moved[bestMove.nIdx] = 1; // Ziel pixel locken
     }
 }
 
-function markVisible(cx, cy, radius) {
-    for (let y = -radius; y <= radius; y++) {
-        for (let x = -radius; x <= radius; x++) {
-            if (x*x + y*y <= radius*radius) {
-                let px = cx + x;
-                let py = cy + y;
-                if (px >= 0 && px < WIDTH && py >= 0 && py < HEIGHT) {
-                    state.visibility[py * WIDTH + px] = 1;
+// Zieht Pixel zusammen, wenn kein Ziel aktiv ist
+function moveCohesionOnly(idx) {
+    if (state.moved[idx]) return;
+    const cx = idx % WIDTH;
+    const cy = Math.floor(idx / WIDTH);
+    const myColor = state.type[idx];
+    const currentNeighbors = countNeighbors(cx, cy, myColor);
+
+    // Wenn wir "gut eingebettet" sind (>=5 Nachbarn), bewegen wir uns kaum (spart CPU und zittert weniger)
+    if (currentNeighbors >= 6) return;
+
+    // Suche Nachbarfeld mit MEHR Nachbarn
+    let bestIdx = -1;
+    let maxN = currentNeighbors;
+
+    // Suche in zufällige Richtungen (nicht alle 8, performance)
+    for(let k=0; k<4; k++) {
+        let rx = Math.floor(Math.random()*3)-1;
+        let ry = Math.floor(Math.random()*3)-1;
+        if (rx===0 && ry===0) continue;
+        
+        let nx = cx+rx, ny = cy+ry;
+        if (isValid(nx, ny)) {
+            let nIdx = ny*WIDTH + nx;
+            if (state.type[nIdx] === 0) {
+                let n = countNeighbors(nx, ny, myColor, idx);
+                if (n > maxN) {
+                    maxN = n;
+                    bestIdx = nIdx;
                 }
             }
         }
     }
+
+    if (bestIdx !== -1) {
+        state.type[bestIdx] = state.type[idx];
+        state.owner[bestIdx] = state.owner[idx];
+        state.type[idx] = 0;
+        state.owner[idx] = 0;
+        state.moved[bestIdx] = 1;
+    }
 }
 
-function draw() {
-    const fowEnabled = document.getElementById('chk-fow').checked;
-
-    for (let i = 0; i < SIZE; i++) {
-        let type = state.type[i];
-        let isVisible = state.visibility[i] === 1;
-
-        if (fowEnabled && !isVisible && type !== 5) { // Wände evtl. immer sichtbar lassen als Karte?
-            buf32[i] = 0xFF000000; // Schwarz
-            // Wenn wir erforschtes Gebiet grau wollen, bräuchten wir State 2
-            continue;
+// Zählt 8-fach Nachbarschaft einer Farbe
+function countNeighbors(x, y, color, ignoreIdx = -1) {
+    let count = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                const idx = ny * WIDTH + nx;
+                if (idx === ignoreIdx) continue; // Mich selbst ignorieren (wenn ich wegziehe)
+                if (state.type[idx] === color) count++;
+            }
         }
+    }
+    return count;
+}
 
-        // Farbe setzen
-        buf32[i] = COLORS_HEX[type];
+// --- KAMPF & INTERAKTION ---
+function interact(fromIdx, toIdx) {
+    const typeA = state.type[fromIdx];
+    const typeB = state.type[toIdx];
+    
+    // Schere-Stein-Papier
+    // 1(R) > 2(G) > 3(B) > 4(Y) > 1(R)
+    let wins = false;
+    if ((typeA === 1 && typeB === 2) || 
+        (typeA === 2 && typeB === 3) || 
+        (typeA === 3 && typeB === 4) || 
+        (typeA === 4 && typeB === 1)) {
+        wins = true;
     }
 
-    ctx.putImageData(imgData, 0, 0);
+    if (wins) {
+        // Übernehme Feld
+        state.type[toIdx] = typeA;
+        state.owner[toIdx] = state.owner[fromIdx];
+        state.type[fromIdx] = 0;
+        state.owner[fromIdx] = 0;
+    } else if (typeA !== typeB) {
+        // Verliere (Lösche Angreifer)
+        state.type[fromIdx] = 0;
+        state.owner[fromIdx] = 0;
+    }
+}
+
+// --- UI & SPAWN ---
+function spawnUnits(color, count) {
+    if (state.resources < count) return;
     
-    // UI Overlay im Canvas (z.B. Zielmarker)
-    if (state.clickTarget) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(state.clickTarget.x, state.clickTarget.y, 5, 0, Math.PI*2);
-        ctx.stroke();
+    // Spawne in einem dichten Cluster ("Blob"), nicht random verteilt
+    let cx = (state.baseIndex % WIDTH);
+    let cy = Math.floor(state.baseIndex / WIDTH) + 4; // Etwas unter der Basis
+    
+    let spawned = 0;
+    // Suche freien Platz spiralförmig
+    let radius = 1;
+    while(spawned < count && radius < 20) {
+        for(let y=-radius; y<=radius; y++) {
+            for(let x=-radius; x<=radius; x++) {
+                if (spawned >= count) break;
+                // Kreisform
+                if (x*x + y*y > radius*radius) continue;
+                
+                let nx = cx + x;
+                let ny = cy + y;
+                    // Stelle ist innerhalb des Spielfelds
+                if (isValid(nx, ny)) {
+                    let idx = ny*WIDTH + nx;
+                    // Stelle ist leer
+                    if (state.type[idx] === 0) {
+                        state.type[idx] = color;
+                        state.owner[idx] = 1;
+                        spawned++;
+                        state.resources--;
+                    }
+                }
+            }
+        }
+        radius++;
+    }
+    updateHUD();
+}
+
+function setupUI() {
+    document.querySelectorAll('.btn-color').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.btn-color').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            state.selectedColor = parseInt(e.target.dataset.color);
+            state.recalling = false;
+            // Ziel resetten bei Farbwechsel? Optional. Hier: Nein.
+        });
+    });
+
+    document.getElementById('btn-spawn').addEventListener('click', () => spawnUnits(state.selectedColor, 20));
+    
+    document.getElementById('btn-recall').addEventListener('click', () => {
+        state.recalling = true;
+        state.targetX = -1; state.targetY = -1;
+    });
+
+    document.getElementById('btn-export').addEventListener('click', () => {
+        // Simpler Canvas Export
+        const link = document.createElement('a');
+        link.download = 'pixel_rts_map.png';
+        link.href = canvas.toDataURL();
+        link.click();
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = WIDTH / rect.width;
+        const scaleY = HEIGHT / rect.height;
+        const tx = Math.floor((e.clientX - rect.left) * scaleX);
+        const ty = Math.floor((e.clientY - rect.top) * scaleY);
+        
+        if (e.button === 2) { // Rechtsklick -> Recall
+            state.recalling = true;
+            state.targetX = -1; state.targetY = -1;
+        } else { // Linksklick -> Move
+            state.recalling = false;
+            state.targetX = tx;
+            state.targetY = ty;
+        }
+    });
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+// --- HELPER ---
+function isValid(x, y) { return x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT; }
+function isNear(idx1, idx2, dist) {
+    const x1 = idx1 % WIDTH, y1 = Math.floor(idx1 / WIDTH);
+    const x2 = idx2 % WIDTH, y2 = Math.floor(idx2 / WIDTH);
+    return Math.abs(x1-x2) <= dist && Math.abs(y1-y2) <= dist;
+}
+
+// --- RENDER LOOP ---
+function updateFogOfWar() {
+    state.visibility.fill(0);
+    // Schnellere FoW: Rechtecke um Einheiten
+    // Basis
+    paintVis(state.baseIndex, 15);
+    
+    for (let i = 0; i < SIZE; i++) {
+        if (state.owner[i] === 1) {
+            paintVis(i, 6); // 6px Sichtradius pro Unit
+        }
+    }
+}
+
+function paintVis(idx, r) {
+    const cx = idx % WIDTH;
+    const cy = Math.floor(idx / WIDTH);
+    const minX = Math.max(0, cx - r);
+    const maxX = Math.min(WIDTH-1, cx + r);
+    const minY = Math.max(0, cy - r);
+    const maxY = Math.min(HEIGHT-1, cy + r);
+    
+    for(let y=minY; y<=maxY; y++) {
+        for(let x=minX; x<=maxX; x++) {
+            state.visibility[y*WIDTH+x] = 1;
+        }
     }
 }
 
@@ -404,52 +440,51 @@ function updateHUD() {
     document.getElementById('res-count').innerText = state.resources;
 }
 
-function exportMapLayer() {
-    // Erstelle temporären Canvas
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = WIDTH;
-    tmpCanvas.height = HEIGHT;
-    const tmpCtx = tmpCanvas.getContext('2d');
-    const tmpImgData = tmpCtx.createImageData(WIDTH, HEIGHT);
-    const tmpBuf = new Uint32Array(tmpImgData.data.buffer);
+function draw() {
+    const fow = document.getElementById('chk-fow').checked;
+    
+    // Background löschen (schwarz)
+    buf32.fill(0xFF000000);
 
-    // Nur Spieler Units zeichnen
-    for(let i=0; i<SIZE; i++) {
-        if(state.owner[i] === 1) {
-            tmpBuf[i] = COLORS_HEX[state.type[i]];
-        } else {
-            tmpBuf[i] = 0x00000000; // Transparent
+    for (let i = 0; i < SIZE; i++) {
+        if (fow && state.visibility[i] === 0) {
+            // Zeige nur Wände im Nebel (abgedunkelt)
+            if (state.type[i] === 5) buf32[i] = 0xFF303030;
+            continue;
+        }
+        if (state.type[i] !== 0) {
+            buf32[i] = COLORS[state.type[i]];
         }
     }
-    
-    tmpCtx.putImageData(tmpImgData, 0, 0);
-    const link = document.createElement('a');
-    link.download = 'player_layer.png';
-    link.href = tmpCanvas.toDataURL();
-    link.click();
-}
 
-// --- MAIN LOOP ---
-
-let lastTime = 0;
-const TICK_RATE = 1000 / 30; // 30 Ticks Logik
-let accumulator = 0;
-
-function gameLoop(time) {
-    const deltaTime = time - lastTime;
-    lastTime = time;
-    accumulator += deltaTime;
-
-    // Fixed Timestep für Logik
-    while (accumulator >= TICK_RATE) {
-        update();
-        accumulator -= TICK_RATE;
+    // Ziel Marker
+    if (state.targetX !== -1) {
+        // Kleines Kreuz zeichnen
+        let idx = state.targetY * WIDTH + state.targetX;
+        if (idx >= 0 && idx < SIZE) buf32[idx] = 0xFFFFFFFF;
     }
 
-    // Interpolation wäre hier möglich, aber für PixelArt/Canvas overkill
+    ctx.putImageData(imgData, 0, 0);
+}
+
+let lastTime = 0;
+const TICK = 1000/60; // 60 FPS Physics für flüssigen Slime
+let acc = 0;
+
+function gameLoop(time) {
+    const dt = time - lastTime;
+    lastTime = time;
+    acc += dt;
+    
+    // Limit Ticks um Spiral of Death zu vermeiden
+    if (acc > 200) acc = 200;
+
+    while (acc >= TICK) {
+        update();
+        acc -= TICK;
+    }
     draw();
     requestAnimationFrame(gameLoop);
 }
 
-// Start
 init();
