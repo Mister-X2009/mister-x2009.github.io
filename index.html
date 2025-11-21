@@ -1,124 +1,94 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <title>Hauptmenü</title>
-  <style>
-    body {
-      background: #111;
-      color: #eee;
-      font-family: "Segoe UI", sans-serif;
-      margin: 0;
-      padding: 40px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Projects</title>
 
-    h1 {
-      font-size: 2.5rem;
-      margin-bottom: 40px;
-      color: #00c896;
-    }
+<!-- Grundlegende SEO Meta-Tags -->
+<meta name="description" content="My showcase page">
+<meta name="keywords" content="GitHub, Apps, Programmierung, programing, code, useful">
+<meta name="author" content="clown_speck">
 
-    .menu {
-      display: flex;
-      flex-direction: column;
-      gap: 25px;
-      width: 100%;
-      max-width: 600px;
-    }
+<!-- OpenGraph (Social Media Vorschau) -->
+<meta property="og:title" content="Meine Projekte">
+<meta property="og:description" content="Eine Übersicht meiner Projekte aus Physik, Chemie und Programmierung">
+<meta property="og:image" content="">
+<meta property="og:url" content="https:\\mister-x2009.github.io">
+<meta property="og:type" content="website">
 
-    .menu-item {
-      background-color: #1f1f1f;
-      border: 1px solid #333;
-      border-radius: 12px;
-      padding: 20px;
-      transition: transform 0.2s, border-color 0.3s;
-    }
+<!-- Favicon -->
+<link rel="icon" href="favicon.ico" type="image/x-icon">
 
-    .menu-item:hover {
-      transform: translateY(-2px);
-      border-color: #00c896;
-    }
-
-    .menu-title {
-      font-size: 1.5rem;
-      margin-bottom: 8px;
-      color: #00c896;
-    }
-
-    .menu-desc {
-      font-size: 1rem;
-      color: #aaa;
-      margin-bottom: 15px;
-    }
-
-    .menu-link {
-      background-color: #00c896;
-      color: #000;
-      padding: 10px 18px;
-      border-radius: 8px;
-      font-weight: bold;
-      text-decoration: none;
-      transition: background-color 0.2s;
-      display: inline-block;
-    }
-
-    .menu-link:hover {
-      background-color: #00e6ae;
-    }
-  </style>
+<style>
+body { font-family: Arial, sans-serif; margin: 2rem; background: #f5f5f5; }
+h1 { text-align: center; }
+.search { margin-bottom: 1rem; width: 100%; padding: 0.5rem; font-size: 1rem; }
+.project { background: #fff; padding: 1rem; margin: 1rem 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);}
+.project img { max-width: 150px; display: block; margin-bottom: 0.5rem;}
+.project a { text-decoration: none; color: #007acc; }
+</style>
 </head>
 <body>
-  <h1>🧭 Hauptmenü</h1>
+<h1>Meine Projekte</h1>
+<input type="text" class="search" placeholder="Suche nach Projekten..." oninput="filterProjects(this.value)">
+<div id="projects"></div>
 
-  <div class="menu" id="menu-container">
-    <!-- Dynamische Einträge werden per JS hinzugefügt -->
-  </div>
+<script>
+const user = 'Mister-X2009';
+const repo = 'mister-x2009.github.io';
+const folder = 'apps';
 
-  <script>
-    // Hier fügst du deine Seiten ein:
-    const apps = [
-      {
-        title: "RetroGadgets Blockly",
-        desc: "Erstelle Lua-Code für RetroGadgets mit einem visuellen Editor.",
-        link: "apps/Blockly.html"
-      },
-      {
-        title: "Polytrack Profilseite",
-        desc: "Erstelle und verwalte deine Profile für Polytrack inklusive Bilder und Code.",
-        link: "polytrack.html"
-      },
-      {
-        title: "TestThing",
-        desc: "test thing.",
-        link: "apps/gpt-money/index.html"
-      },
-      {
-        title: "Rabattcode Generator/Speicher",
-        desc: "Erstelle Rabattcods",
-        link: "apps/rabattcode/index.html"
-      },
-      {
-        title: "Local Storage Viewer",
-        desc: "Search in your localstorage",
-        link: "apps/local-storage-viever/index.html"
-      },
-    ];
+async function fetchProjects() {
+  const container = document.getElementById('projects');
 
-    const container = document.getElementById('menu-container');
+  async function fetchRecursive(path) {
+    const res = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}`);
+    const files = await res.json();
+    
+    for (let file of files) {
+      if (file.type === 'dir') {
+        await fetchRecursive(file.path);
+      } else if (file.name === 'index.html') {
+        const htmlRes = await fetch(file.download_url);
+        const htmlText = await htmlRes.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlText, 'text/html');
 
-    apps.forEach(app => {
-      const item = document.createElement('div');
-      item.className = 'menu-item';
-      item.innerHTML = `
-        <div class="menu-title">${app.title}</div>
-        <div class="menu-desc">${app.desc}</div>
-        <a class="menu-link" href="${app.link}">Öffnen</a>
-      `;
-      container.appendChild(item);
-    });
-  </script>
+        const title = doc.querySelector('title')?.innerText || 'Kein Titel';
+        const description = doc.querySelector('meta[name="description"]')?.content || 'Keine Beschreibung';
+        const ogImage = doc.querySelector('meta[property="og:image"]')?.content || '';
+
+        const div = document.createElement('div');
+        div.className = 'project';
+        div.innerHTML = `
+          ${ogImage ? `<img src="${ogImage}" alt="${title}">` : ''}
+          <a href="${file.html_url}" target="_blank"><h2>${title}</h2></a>
+          <p>${description}</p>
+        `;
+        container.appendChild(div);
+
+        // Optional: Erste Projekt-OG-Tags in Main-Page einfügen
+        if (!document.querySelector('meta[property="og:image"]').content && ogImage) {
+          document.querySelector('meta[property="og:title"]').content = title;
+          document.querySelector('meta[property="og:description"]').content = description;
+          document.querySelector('meta[property="og:image"]').content = ogImage;
+        }
+      }
+    }
+  }
+
+  await fetchRecursive(folder);
+}
+
+function filterProjects(query) {
+  const projects = document.querySelectorAll('.project');
+  projects.forEach(p => {
+    p.style.display = p.innerText.toLowerCase().includes(query.toLowerCase()) ? 'block' : 'none';
+  });
+}
+
+fetchProjects();
+</script>
 </body>
 </html>
