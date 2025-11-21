@@ -35,7 +35,9 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            padding: 1rem;
+            /* Entferne äußere Abstände für rahmenloses Vollbilderlebnis */
+            padding: 0; 
+            margin: 0;
             transition: all 0.3s ease;
         }
 
@@ -48,7 +50,8 @@
             flex-direction: column;
             width: 100vw;
             height: 100vh;
-            padding: 0;
+            /* Stelle sicher, dass keine Ränder vorhanden sind */
+            padding: 0; 
             margin: 0;
         }
 
@@ -67,27 +70,28 @@
             image-rendering: pixelated;
             image-rendering: -moz-crisp-edges;
             image-rendering: -webkit-crisp-edges;
-            border: 4px solid #6f7478;
-            box-shadow: 0 0 0 8px #4e5458, 0 0 0 12px #3c3f41;
-            /* Standardgröße für den Fenster-Modus */
+            /* Rahmen und Schatten entfernt, um den rahmenlosen Look zu gewährleisten */
+            border: none;
+            box-shadow: none;
+            
             width: 100%; 
             max-width: 512px;
             aspect-ratio: 1 / 1;
             transition: all 0.3s ease;
-            /* WICHTIG: Display wird standardmäßig in JS auf 'block' gesetzt */
+            /* Das Canvas ist standardmäßig versteckt */
         }
         
-        /* Überschreibt die maximale Breite im Vollbildmodus */
+        /* Maximale Anpassung der Größe im Vollbildmodus (größtes Quadrat) */
         #app:fullscreen #gameCanvas, #app:-webkit-full-screen #gameCanvas, #app:-moz-full-screen #gameCanvas {
-             max-width: 100vh;
-             max-height: 100vw;
+             /* Wählt die kleinere der beiden Dimensionen (Breite oder Höhe) als maximale Größe */
+             max-width: min(100vw, 100vh);
+             max-height: min(100vw, 100vh);
              width: auto;
              height: auto;
              margin: auto;
-             max-width: min(100vw, 100vh);
-             max-height: min(100vw, 100vh);
         }
 
+        /* Allgemeine UI-Stile für das Setup-Panel */
         .pixel-button {
             background-color: #212121;
             color: #ffeb3b;
@@ -198,8 +202,8 @@
     <!-- Spiel-Logik Skript -->
     <script>
         // --- Globale Spiel-Variablen ---
-        const INITIAL_CANVAS_SIZE = 512; // Die interne Zeichenauflösung (z.B. 512x512)
-        const MAP_RESOLUTION = 256; // Die Rasterauflösung der Spiel-Logik (passt zur 256x256 SVG)
+        const INITIAL_CANVAS_SIZE = 512; // Die interne Zeichenauflösung (512x512)
+        const MAP_RESOLUTION = 256; // Die Rasterauflösung der Spiel-Logik (256x256)
         
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -282,7 +286,6 @@
 
         /**
          * Schaltet in den Vollbildmodus für den App-Container.
-         * Fängt Fehler ab, um unhandled rejections zu vermeiden.
          */
         function goFullscreen() {
             const requestMethod = appContainer.requestFullscreen || 
@@ -307,7 +310,6 @@
         function loadMapFromSvg(svgString) {
             return new Promise((resolve, reject) => {
                 const hiddenCanvas = document.createElement('canvas');
-                // Die Hilfs-Leinwand muss die MAP_RESOLUTION (256x256) haben
                 hiddenCanvas.width = MAP_RESOLUTION;
                 hiddenCanvas.height = MAP_RESOLUTION;
                 const hCtx = hiddenCanvas.getContext('2d');
@@ -318,7 +320,6 @@
 
                 img.onload = () => {
                     hCtx.clearRect(0, 0, MAP_RESOLUTION, MAP_RESOLUTION);
-                    // Zeichne das SVG auf die 256x256 Leinwand
                     hCtx.drawImage(img, 0, 0, MAP_RESOLUTION, MAP_RESOLUTION);
                     URL.revokeObjectURL(url);
                     
@@ -326,7 +327,6 @@
                     for (let y = 0; y < MAP_RESOLUTION; y++) {
                         newMap[y] = [];
                         for (let x = 0; x < MAP_RESOLUTION; x++) {
-                            // Lese den Farbwert jedes Pixels der 256x256 Karte
                             const pixel = hCtx.getImageData(x, y, 1, 1).data;
                             const hexColor = '#' + [pixel[0], pixel[1], pixel[2]]
                                 .map(c => c.toString(16).padStart(2, '0'))
@@ -356,11 +356,12 @@
             const mapTileWidth = INITIAL_CANVAS_SIZE / MAP_RESOLUTION; // 2
             const mapTileHeight = INITIAL_CANVAS_SIZE / MAP_RESOLUTION; // 2
             
+            // Die gesamte 512x512 Canvas wird basierend auf der 256x256 Karte gezeichnet
             for (let i = 0; i < MAP_RESOLUTION; i++) {
                 for (let j = 0; j < MAP_RESOLUTION; j++) {
                     const terrainType = gameMap[j][i];
-                    const x = i * mapTileWidth; // Start-X auf der 512er Canvas
-                    const y = j * mapTileHeight; // Start-Y auf der 512er Canvas
+                    const x = i * mapTileWidth;
+                    const y = j * mapTileHeight;
 
                     const { pixelColors } = TERRAINS[terrainType];
                     
@@ -407,8 +408,8 @@
         // --- Spiel-Update-Logik ---
 
         /**
-         * Gibt das Terrain an der Position (x, y) zurück und verwendet Clamping
-         * um sicherzustellen, dass immer ein gültiger Wert vom Rand zurückgegeben wird.
+         * Gibt das Terrain an der Position (x, y) zurück und verwendet Clamping,
+         * um die Randtextur der Karte zu verwenden, falls die Koordinate außerhalb liegt.
          */
         function getTerrainAt(x, y) {
             const mapTileWidth = INITIAL_CANVAS_SIZE / MAP_RESOLUTION;
@@ -419,15 +420,16 @@
             let tileY = Math.floor(y / mapTileHeight);
 
             // Clamping: Beschränke die Indizes auf den gültigen Bereich [0, MAP_RESOLUTION - 1]
+            // Dies ist die Logik, die die Rand-Textur nach außen füllt, wie gewünscht.
             tileX = Math.max(0, Math.min(MAP_RESOLUTION - 1, tileX));
             tileY = Math.max(0, Math.min(MAP_RESOLUTION - 1, tileY));
 
-            // Da wir Clamping verwenden, ist der Zugriff auf gameMap[tileY][tileX] immer sicher
             return gameMap[tileY][tileX];
         }
         
         function updateCar(car, input, deltaTime) {
-            const currentTerrain = getTerrainAt(car.x, car.y);
+            // Die Geschwindigkeits-Berechnung nutzt die geklemmte Rand-Textur
+            const currentTerrain = getTerrainAt(car.x, car.y); 
             const maxSpeedFactor = TERRAINS[currentTerrain].maxSpeedFactor;
 
             if (input.up) {
@@ -460,7 +462,7 @@
             car.x += dx;
             car.y += dy;
 
-            // Wandbegrenzung (zusätzlich zum Clamping im getTerrainAt)
+            // Wandbegrenzung (hält das Auto im 512x512 Bereich)
             if (car.x < 0 || car.x > INITIAL_CANVAS_SIZE || car.y < 0 || car.y > INITIAL_CANVAS_SIZE) {
                 car.speed = -car.speed * 0.5;
                 car.x = Math.max(0, Math.min(INITIAL_CANVAS_SIZE, car.x));
@@ -513,19 +515,19 @@
                 car2.rotation = 0;
 
                 if (!isGameRunning) {
-                    // 1. Vollbildmodus aktivieren (mit Fehlerbehandlung)
-                    goFullscreen(); 
-                    
-                    // 2. Setup-Panel verstecken
+                    // 1. Setup-Panel verstecken
                     setupPanel.classList.add('hidden'); 
                     
-                    // 3. Canvas anzeigen
+                    // 2. Canvas anzeigen
                     canvas.style.display = 'block';
+
+                    // 3. Vollbildmodus aktivieren
+                    goFullscreen(); 
 
                     isGameRunning = true;
                     lastUpdateTime = performance.now();
                     requestAnimationFrame(gameLoop);
-                    console.log("Spiel gestartet und Vollbildmodus versucht.");
+                    console.log("Spiel gestartet.");
                 }
             } catch (error) {
                 console.error("Fehler beim Laden der Karte:", error);
