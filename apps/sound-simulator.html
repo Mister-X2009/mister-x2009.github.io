@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Sound Simulator (Akustik-Raytracing-Light)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Globale Variablen (werden in window.globals gespeichert, um außerhalb des Moduls zugänglich zu sein)
+        window.globals = {};
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        if (firebaseConfig) {
+            const app = initializeApp(firebaseConfig);
+            window.globals.db = getFirestore(app);
+            window.globals.auth = getAuth(app);
+            window.globals.appId = appId;
+            window.globals.isAuthReady = false;
+            
+            // WICHTIG: Die Auth-Funktionen müssen für das Hauptskript exportiert werden
+            window.globals.authMethods = { signInAnonymously, signInWithCustomToken, onAuthStateChanged };
+
+
+            // Authentifizierung
+            onAuthStateChanged(window.globals.auth, async (user) => {
+                if (!user) {
+                    // Wenn kein Benutzer angemeldet ist, verwenden wir den initialen Token oder melden uns anonym an
+                    try {
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(window.globals.auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(window.globals.auth);
+                        }
+                    } catch (error) {
+                        console.error("Firebase Auth Fehler:", error);
+                    }
+                }
+                // Nach der Authentifizierung (oder anonymer Anmeldung) ist die App bereit
+                window.globals.isAuthReady = true;
+                if (window.globals.auth.currentUser) {
+                    window.globals.userId = window.globals.auth.currentUser.uid;
+                }
+                console.log("Firebase Auth Status:", window.globals.isAuthReady ? "Bereit" : "Wird initialisiert");
+            });
+
+            // Exponiere die Firestore-Funktionen für die Hauptlogik
+            window.globals.firestore = { doc, setDoc, getDoc, onSnapshot };
+        } else {
+            console.error("Firebase Konfiguration fehlt. Speichern ist deaktiviert.");
+            window.globals.isAuthReady = true; // Setze auf true, um die App trotzdem zu starten
+        }
+    </script>
+
+    <style>
+        /* Blender-ähnliche dunkelgraue Theme */
+        :root {
+            --bg-dark: #333333;
+            --bg-medium: #444444;
+            --bg-light: #555555;
+            --text-primary: #f0f0f0;
+            --highlight-color: #f7a01c; /* Orange */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+        .blender-panel {
+            background-color: var(--bg-medium);
+            border-radius: 4px;
+        }
+        .blender-button {
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background-color 0.1s;
+        }
+        .blender-button:hover {
+            background-color: var(--bg-light);
+        }
+        .blender-button.active {
+            background-color: var(--highlight-color);
+            color: black;
+            font-weight: bold;
+        }
+        .dropdown-menu {
+            background-color: var(--bg-medium);
+            border: 1px solid var(--bg-light);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+            z-index: 50;
+        }
+        /* Custom scrollbar for better look */
+        .blender-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .blender-scroll::-webkit-scrollbar-track {
+            background: var(--bg-medium);
+        }
+        .blender-scroll::-webkit-scrollbar-thumb {
+            background: var(--bg-light);
+            border-radius: 10px;
+        }
+        .blender-scroll::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- Top Bar (Header) -->
+    <header id="top-bar" class="flex items-center justify-between p-1 shadow-lg z-10" style="background-color: var(--bg-medium);">
+        <div class="flex space-x-1">
+            <!-- Datei Menu -->
+            <div class="relative group">
+                <button class="blender-button" onclick="toggleDropdown('menu-datei')">Datei</button>
+                <div id="menu-datei" class="absolute left-0 mt-1 w-48 dropdown-menu hidden">
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="saveState()">Speichern (S)</a>
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="loadState()">Laden (L)</a>
+                </div>
+            </div>
+
+            <!-- Bearbeiten Menu (Settings) -->
+            <div class="relative group">
+                <button class="blender-button" onclick="toggleDropdown('menu-bearbeiten')">Bearbeiten</button>
+                <div id="menu-bearbeiten" class="absolute left-0 mt-1 w-48 dropdown-menu hidden">
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="toggleSettingsModal()">Einstellungen</a>
+                </div>
+            </div>
+
+            <!-- Hinzufügen Menu (Add) -->
+            <div class="relative group">
+                <button class="blender-button" onclick="toggleDropdown('menu-add')">Hinzufügen</button>
+                <div id="menu-add" class="absolute left-0 mt-1 w-48 dropdown-menu hidden">
+                    <div class="px-3 py-1 text-xs text-gray-400">3D-Objekte (Hindernisse)</div>
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="addObject('box')">Box</a>
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="addObject('sphere')">Kugel</a>
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="addObject('plane')">Ebene</a>
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="addObject('capsule')">Kapsel</a>
+                    <div class="px-3 py-1 text-xs text-gray-400">Akustik</div>
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="addReceiver()">Sound Empfänger (Kopf)</a>
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="addSource('speaker')">Lautsprecher (Quelle)</a>
+                    <a href="#" class="block px-3 py-2 text-sm hover:bg-gray-600" onclick="addSource('omni')">Omni-Quelle (Sphere)</a>
+                </div>
+            </div>
+
+             <!-- Simulation Controls -->
+             <div class="flex items-center space-x-2 ml-4">
+                <button id="start-sim-btn" class="blender-button bg-green-700 hover:bg-green-600 transition-colors" onclick="toggleSimulation(true)">
+                    <span id="sim-status-icon">▶</span> Start Simulation
+                </button>
+                <button id="stop-sim-btn" class="blender-button bg-red-700 hover:bg-red-600 transition-colors hidden" onclick="toggleSimulation(false)">
+                    <span id="sim-status-icon-stop">■</span> Stop Simulation
+                </button>
+            </div>
+        </div>
+
+        <div id="user-info" class="text-xs text-gray-400 mr-2">
+            <!-- Platzhalter für die User ID -->
+        </div>
+    </header>
+
+    <!-- Main Content Area (Viewport and Properties) -->
+    <main class="flex flex-1 overflow-hidden">
+        <!-- 3D Viewport -->
+        <div id="viewport-container" class="flex-1 relative overflow-hidden">
+            <canvas id="three-canvas"></canvas>
+            <div id="selection-label" class="absolute top-2 left-2 p-1 text-sm bg-black bg-opacity-70 rounded hidden"></div>
+            <div id="status-message" class="absolute bottom-2 left-1/2 transform -translate-x-1/2 p-2 text-sm bg-yellow-600 bg-opacity-90 rounded hidden"></div>
+        </div>
+
+        <!-- Modification Panel (Properties Panel) -->
+        <div id="properties-panel" class="w-80 p-3 flex flex-col blender-panel overflow-y-auto blender-scroll transition-all duration-300">
+            <h2 class="text-xl font-bold mb-3 text-highlight-color">Eigenschaften</h2>
+
+            <div class="flex border-b border-gray-600 mb-2">
+                <button class="tab-button p-2 text-sm hover:bg-gray-600 border-b-2 border-highlight-color" data-tab="transform">Transform</button>
+                <button class="tab-button p-2 text-sm hover:bg-gray-600 border-b-2 border-transparent" data-tab="modifier">Objekt-Modifikator</button>
+            </div>
+
+            <div id="panel-content" class="flex-1">
+                <p id="no-selection-message" class="text-gray-400">Wähle ein Objekt im Viewport aus.</p>
+
+                <!-- Transform Tab -->
+                <div id="tab-transform" class="space-y-4 hidden">
+                    <h3 class="text-lg text-gray-300">Transformation</h3>
+                    <div id="transform-controls" class="space-y-2">
+                        <!-- Position -->
+                        <label class="block text-sm font-medium">Position (X, Y, Z)</label>
+                        <div class="flex space-x-2">
+                            <input type="number" step="0.1" id="pos-x" onchange="updateObjectProperty('position', 'x', this.value)" class="w-1/3 p-1 text-sm rounded bg-gray-600 border border-gray-500">
+                            <input type="number" step="0.1" id="pos-y" onchange="updateObjectProperty('position', 'y', this.value)" class="w-1/3 p-1 text-sm rounded bg-gray-600 border border-gray-500">
+                            <input type="number" step="0.1" id="pos-z" onchange="updateObjectProperty('position', 'z', this.value)" class="w-1/3 p-1 text-sm rounded bg-gray-600 border border-gray-500">
+                        </div>
+                        <!-- Scale -->
+                        <label class="block text-sm font-medium">Skalierung (X, Y, Z)</label>
+                        <div class="flex space-x-2">
+                            <input type="number" step="0.1" id="scale-x" onchange="updateObjectProperty('scale', 'x', this.value)" class="w-1/3 p-1 text-sm rounded bg-gray-600 border border-gray-500">
+                            <input type="number" step="0.1" id="scale-y" onchange="updateObjectProperty('scale', 'y', this.value)" class="w-1/3 p-1 text-sm rounded bg-gray-600 border border-gray-500">
+                            <input type="number" step="0.1" id="scale-z" onchange="updateObjectProperty('scale', 'z', this.value)" class="w-1/3 p-1 text-sm rounded bg-gray-600 border border-gray-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modifier Tab -->
+                <div id="tab-modifier" class="space-y-4 hidden">
+                    <h3 class="text-lg text-gray-300">Modifikatoren</h3>
+                    <div id="modifier-content" class="space-y-4">
+                        <!-- Material (für Hindernisse) -->
+                        <div id="modifier-material" class="modifier-section space-y-2">
+                            <label class="block text-sm font-medium">Akustisches Material</label>
+                            <select id="material-select" onchange="updateMaterial(this.value)" class="w-full p-1 text-sm rounded bg-gray-600 border border-gray-500">
+                                <option value="concrete">Beton (Reflektierend)</option>
+                                <option value="glass">Glas (Sehr Reflektierend)</option>
+                                <option value="carpet">Teppich (Dämpfend)</option>
+                                <option value="wood">Holz (Mittel)</option>
+                            </select>
+                            <p class="text-xs text-gray-400">Beeinflusst die Schallabsorption.</p>
+                        </div>
+
+                        <!-- Sound Quelle (für Quellen) -->
+                        <div id="modifier-sound" class="modifier-section space-y-2">
+                            <label class="block text-sm font-medium">Sound-Datei (Quelle)</label>
+                            <select id="sound-select" onchange="updateSound(this.value)" class="w-full p-1 text-sm rounded bg-gray-600 border border-gray-500">
+                                <option value="sinus">Sinus (440Hz)</option>
+                                <option value="noise">Rauschen</option>
+                                <option value="pulse">Pulse-Welle</option>
+                            </select>
+                            <p class="text-xs text-gray-400">Wird bei Simulation abgespielt.</p>
+                        </div>
+                    </div>
+
+                    <button class="w-full mt-4 p-2 bg-red-700 hover:bg-red-600 rounded text-sm font-bold" onclick="deleteSelectedObject()">Objekt löschen (Entf)</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center z-50">
+        <div class="blender-panel p-6 w-11/12 max-w-lg rounded-lg shadow-2xl">
+            <h2 class="text-2xl font-bold mb-4 text-highlight-color">Globale Einstellungen</h2>
+            <div class="space-y-4">
+                <!-- Render Qualität -->
+                <div>
+                    <label for="render-quality" class="block text-sm font-medium mb-1">Render-Qualität (Frames pro Sekunde)</label>
+                    <input type="number" id="render-quality" min="10" max="60" value="60" class="w-full p-2 rounded bg-gray-600 border border-gray-500" onchange="updateSetting('renderFps', this.value)">
+                    <p class="text-xs text-gray-400">Definiert die maximale Bildrate des Viewports.</p>
+                </div>
+
+                <!-- Sound Raycast Qualität -->
+                <div>
+                    <label for="raycast-quality" class="block text-sm font-medium mb-1">Akustik-Raycast-Qualität (Strahlen pro Quelle)</label>
+                    <input type="number" id="raycast-quality" min="1" max="10" value="3" class="w-full p-2 rounded bg-gray-600 border border-gray-500" onchange="updateSetting('raycastCount', this.value)">
+                    <p class="text-xs text-gray-400">Anzahl der Strahlen, die pro Frame von der Quelle zum Empfänger gesendet werden (Kosten vs. Genauigkeit).</p>
+                </div>
+
+                <!-- Akustik-Modus -->
+                <div>
+                    <label for="acoustic-mode" class="block text-sm font-medium mb-1">Akustik-Modus</label>
+                    <select id="acoustic-mode" class="w-full p-2 rounded bg-gray-600 border border-gray-500" onchange="updateSetting('acousticMode', this.value)">
+                        <option value="hrir">Einfache HRIR/Stereo (Web Audio Panner)</option>
+                        <option value="raycast">Raycast-Absorption (Zusätzliche Dämpfung)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end space-x-3">
+                <button class="blender-button bg-highlight-color hover:bg-orange-400 text-black font-bold" onclick="toggleSettingsModal()">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- Globale Variablen ---
+        let scene, camera, renderer, controls;
+        let listener, audioLoader, clock, gui, raycaster;
+        let selectedObject = null;
+        let isSimulationRunning = false;
+        let lastCameraPosition = new THREE.Vector3();
+        let lastCameraTarget = new THREE.Vector3();
+
+        // Standard-Einstellungen (werden von Firestore/Initial geladen)
+        let settings = {
+            renderFps: 60,
+            raycastCount: 3,
+            acousticMode: 'raycast',
+            saveKey: 'sound-sim-state'
+        };
+
+        // Speicher für alle 3D-Objekte in der Szene, die persistent gespeichert werden müssen
+        let sceneObjects = [];
+        let objectIdCounter = 0;
+
+        // Akustische Materialeigenschaften (vereinfachte Absorptionsfaktoren, 0.0 = total reflektierend, 1.0 = total absorbierend)
+        const acousticMaterials = {
+            concrete: { absorption: 0.1, color: 0xAAAAAA },
+            glass: { absorption: 0.05, color: 0xBBFFBB },
+            carpet: { absorption: 0.7, color: 0x8B4513 },
+            wood: { absorption: 0.3, color: 0xA0522D }
+        };
+
+        // --- Core: Init und Game Loop ---
+
+        window.onload = async () => {
+            await waitForAuthReady(); // Warte auf die Firebase-Initialisierung
+            initScene();
+            loadState();
+            animate();
+            setupEventListeners();
+            displayUserInfo();
+        };
+
+        async function waitForAuthReady() {
+            return new Promise(resolve => {
+                const check = () => {
+                    if (window.globals.isAuthReady) {
+                        resolve();
+                    } else {
+                        setTimeout(check, 100);
+                    }
+                };
+                check();
+            });
+        }
+
+        function initScene() {
+            // Szene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x333333);
+
+            // Kamera
+            const viewportContainer = document.getElementById('viewport-container');
+            camera = new THREE.PerspectiveCamera(75, viewportContainer.clientWidth / viewportContainer.clientHeight, 0.1, 1000);
+            camera.position.set(5, 5, 5);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, canvas: document.getElementById('three-canvas') });
+            renderer.setSize(viewportContainer.clientWidth, viewportContainer.clientHeight);
+
+            // Controls (für den Viewport)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 0, 0);
+            controls.update();
+
+            // Licht
+            const ambientLight = new THREE.AmbientLight(0x404040, 5); // soft white light
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(10, 10, 5);
+            scene.add(directionalLight);
+
+            // Raycaster
+            raycaster = new THREE.Raycaster();
+            raycaster.far = 100; // Maximale Reichweite der Strahlen
+
+            // Audio-Setup
+            listener = new THREE.AudioListener();
+            camera.add(listener); // AudioListener an die Kamera hängen
+            audioLoader = new THREE.AudioLoader();
+
+            // Boden (Plane)
+            addObject('plane', 0, 0, 0, 20, 0.1, 20); // Feste Bodenebene
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Steuere die Framerate basierend auf den Einstellungen
+            const interval = 1000 / settings.renderFps;
+            let then = performance.now();
+
+            const renderLoop = (now) => {
+                requestAnimationFrame(renderLoop);
+                const delta = now - then;
+                if (delta > interval) {
+                    then = now - (delta % interval);
+
+                    if (isSimulationRunning) {
+                        simulateAcoustics();
+                    }
+
+                    controls.update();
+                    renderer.render(scene, camera);
+                }
+            };
+
+            renderLoop(performance.now());
+        }
+
+        function onWindowResize() {
+            const viewportContainer = document.getElementById('viewport-container');
+            camera.aspect = viewportContainer.clientWidth / viewportContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(viewportContainer.clientWidth, viewportContainer.clientHeight);
+        }
+
+        // --- Objekt- und Szene-Management ---
+
+        function getNextObjectId() {
+            objectIdCounter++;
+            return `obj_${objectIdCounter}`;
+        }
+
+        function createGeometry(type, w = 1, h = 1, d = 1) {
+            switch (type) {
+                case 'box': return new THREE.BoxGeometry(w, h, d);
+                case 'sphere': return new THREE.SphereGeometry(w, 32, 32); // w = radius
+                case 'plane': return new THREE.PlaneGeometry(w, h);
+                case 'capsule': return new THREE.CapsuleGeometry(w, h, 4, 8); // w = radius, h = length
+                default: return new THREE.BoxGeometry(1, 1, 1);
+            }
+        }
+
+        function addObject(type, x = 0, y = 0.5, z = 0, w = 1, h = 1, d = 1) {
+            // Wenn die Szene läuft, können keine Objekte hinzugefügt werden
+            if (isSimulationRunning) {
+                showMessage("Stoppe die Simulation, um Objekte hinzuzufügen.", 3000);
+                return;
+            }
+
+            const geometry = createGeometry(type, w, h, d);
+            const material = new THREE.MeshPhongMaterial({ color: 0x00FF00, transparent: true, opacity: 0.8 });
+            const mesh = new THREE.Mesh(geometry, material);
+
+            mesh.position.set(x, y, z);
+            mesh.userData.id = getNextObjectId();
+            mesh.userData.type = type;
+            mesh.userData.isAcousticSource = false;
+            mesh.userData.isAcousticReceiver = false;
+            mesh.userData.acousticMaterial = 'concrete';
+            mesh.name = `${type.charAt(0).toUpperCase() + type.slice(1)} ${objectIdCounter}`;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            scene.add(mesh);
+            sceneObjects.push(mesh);
+            selectObject(mesh);
+        }
+
+        function addReceiver(x = 0, y = 1.6, z = 0) {
+            // Stelle sicher, dass nur ein Empfänger existiert
+            if (sceneObjects.find(obj => obj.userData.isAcousticReceiver)) {
+                showMessage("Es kann nur einen Sound Empfänger geben.", 3000);
+                return;
+            }
+
+            const headGeometry = new THREE.SphereGeometry(0.2, 32, 32);
+            const headMaterial = new THREE.MeshPhongMaterial({ color: 0x9999FF });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+
+            // Simuliere Ohren/Mikrofone (einfache Zylinder)
+            const micGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 16);
+            const micMaterial = new THREE.MeshPhongMaterial({ color: 0xFFD700 });
+
+            // Rechtes Mikro
+            const rightMic = new THREE.Mesh(micGeometry, micMaterial);
+            rightMic.rotation.z = Math.PI / 2;
+            rightMic.position.set(0.3, 0, 0);
+            head.add(rightMic);
+
+            // Linkes Mikro
+            const leftMic = new THREE.Mesh(micGeometry, micMaterial);
+            leftMic.rotation.z = Math.PI / 2;
+            leftMic.position.set(-0.3, 0, 0);
+            head.add(leftMic);
+
+            head.position.set(x, y, z);
+            head.userData.id = getNextObjectId();
+            head.userData.type = 'receiver';
+            head.userData.isAcousticReceiver = true;
+            head.name = `Sound Empfänger (Kopf)`;
+
+            scene.add(head);
+            sceneObjects.push(head);
+            selectObject(head);
+        }
+
+        function addSource(type, x = -3, y = 1, z = 3) {
+            const size = type === 'speaker' ? 0.5 : 0.3;
+            const geometry = createGeometry('box', size, size, size); // Rechteckiger Lautsprecher
+            if (type === 'omni') geometry.dispose(); // Wenn Omni, keine sichtbare Geometrie verwenden
+
+            const material = new THREE.MeshPhongMaterial({ color: 0xFF0000, wireframe: type === 'omni' });
+            const mesh = new THREE.Mesh(geometry, material);
+            if (type === 'omni') mesh.geometry = new THREE.SphereGeometry(size, 16, 16); // Sichtbare Kugel für Omni
+
+            mesh.position.set(x, y, z);
+            mesh.userData.id = getNextObjectId();
+            mesh.userData.type = 'source';
+            mesh.userData.isAcousticSource = true;
+            mesh.userData.soundType = 'sinus'; // Standard-Sound
+            mesh.name = `${type === 'omni' ? 'Omni-Quelle' : 'Lautsprecher'} ${objectIdCounter}`;
+
+            // Positional Audio Node hinzufügen
+            const pAudio = new THREE.PositionalAudio(listener);
+            mesh.add(pAudio);
+            mesh.userData.audio = pAudio;
+
+            scene.add(mesh);
+            sceneObjects.push(mesh);
+            selectObject(mesh);
+        }
+
+        function deleteSelectedObject() {
+            if (!selectedObject || selectedObject.userData.type === 'plane') {
+                showMessage("Kein oder ein unveränderbares Objekt ausgewählt.", 3000);
+                return;
+            }
+
+            // Audio stoppen, falls es eine Quelle war
+            if (selectedObject.userData.audio) {
+                selectedObject.userData.audio.stop();
+            }
+
+            scene.remove(selectedObject);
+            sceneObjects = sceneObjects.filter(obj => obj.userData.id !== selectedObject.userData.id);
+            selectedObject = null;
+            document.getElementById('no-selection-message').classList.remove('hidden');
+            document.getElementById('tab-transform').classList.add('hidden');
+            document.getElementById('tab-modifier').classList.add('hidden');
+            document.getElementById('selection-label').classList.add('hidden');
+        }
+
+        // --- Interaktion und UI-Logik ---
+
+        function toggleDropdown(id) {
+            document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                if (menu.id !== id) menu.classList.add('hidden');
+            });
+            document.getElementById(id).classList.toggle('hidden');
+        }
+
+        function toggleSettingsModal() {
+            document.getElementById('settings-modal').classList.toggle('hidden');
+        }
+
+        function showMessage(text, duration = 3000) {
+            const msgEl = document.getElementById('status-message');
+            msgEl.textContent = text;
+            msgEl.classList.remove('hidden');
+            setTimeout(() => {
+                msgEl.classList.add('hidden');
+            }, duration);
+        }
+
+        function setupEventListeners() {
+            // Maus-Klick-Event für Objektauswahl
+            renderer.domElement.addEventListener('click', onCanvasClick, false);
+
+            // Tab-Wechsel im Properties Panel
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const tabName = e.target.getAttribute('data-tab');
+                    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('border-highlight-color', 'font-bold'));
+                    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.add('border-transparent'));
+                    e.target.classList.add('border-highlight-color', 'font-bold');
+                    document.querySelectorAll('[id^="tab-"]').forEach(tab => tab.classList.add('hidden'));
+                    document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+                });
+            });
+
+            // Tastenkürzel (Shortcuts)
+            document.addEventListener('keydown', (e) => {
+                // S zum Speichern
+                if (e.key === 's' || e.key === 'S') {
+                    e.preventDefault();
+                    saveState();
+                }
+                // L zum Laden
+                if (e.key === 'l' || e.key === 'L') {
+                    e.preventDefault();
+                    loadState();
+                }
+                // Entf zum Löschen
+                if (e.key === 'Delete' || e.key === 'd' || e.key === 'D') {
+                    e.preventDefault();
+                    deleteSelectedObject();
+                }
+            });
+        }
+
+        function onCanvasClick(event) {
+            // Berechne die Mauskoordinaten in normalisierten Gerätedaten (-1 bis +1)
+            const rect = renderer.domElement.getBoundingClientRect();
+            const mouse = new THREE.Vector2(
+                ((event.clientX - rect.left) / rect.width) * 2 - 1,
+                -((event.clientY - rect.top) / rect.height) * 2 + 1
+            );
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(sceneObjects, false);
+
+            if (intersects.length > 0) {
+                // Finde das Mesh-Objekt, das den userData.id-Tag hat
+                let hitObject = intersects[0].object;
+                while (hitObject && !hitObject.userData.id) {
+                    hitObject = hitObject.parent;
+                }
+                if (hitObject && hitObject.userData.id) {
+                    selectObject(hitObject);
+                }
+            } else {
+                selectObject(null);
+            }
+        }
+
+        function selectObject(mesh) {
+            if (selectedObject) {
+                // De-selektiere das vorherige Objekt (setze Farbe zurück)
+                selectedObject.material.emissive.setHex(0x000000);
+            }
+
+            selectedObject = mesh;
+
+            if (selectedObject) {
+                // Selektiere das neue Objekt (hebe es hervor)
+                selectedObject.material.emissive.setHex(0x333333); // Leichte Grautönung zur Hervorhebung
+                updatePropertiesPanel(selectedObject);
+                document.getElementById('no-selection-message').classList.add('hidden');
+                document.getElementById('tab-transform').classList.remove('hidden');
+                document.getElementById('tab-modifier').classList.remove('hidden');
+                document.getElementById('selection-label').textContent = `Ausgewählt: ${selectedObject.name}`;
+                document.getElementById('selection-label').classList.remove('hidden');
+            } else {
+                document.getElementById('no-selection-message').classList.remove('hidden');
+                document.getElementById('tab-transform').classList.add('hidden');
+                document.getElementById('tab-modifier').classList.add('hidden');
+                document.getElementById('selection-label').classList.add('hidden');
+            }
+        }
+
+        function updatePropertiesPanel(mesh) {
+            // Transform-Tab
+            document.getElementById('pos-x').value = mesh.position.x.toFixed(2);
+            document.getElementById('pos-y').value = mesh.position.y.toFixed(2);
+            document.getElementById('pos-z').value = mesh.position.z.toFixed(2);
+            document.getElementById('scale-x').value = mesh.scale.x.toFixed(2);
+            document.getElementById('scale-y').value = mesh.scale.y.toFixed(2);
+            document.getElementById('scale-z').value = mesh.scale.z.toFixed(2);
+
+            // Modifier-Tab (Material / Sound)
+            const isSource = mesh.userData.isAcousticSource;
+            const isReceiver = mesh.userData.isAcousticReceiver;
+            const isObstacle = !isSource && !isReceiver;
+
+            document.getElementById('modifier-material').classList.toggle('hidden', !isObstacle);
+            document.getElementById('modifier-sound').classList.toggle('hidden', !isSource);
+
+            if (isObstacle) {
+                document.getElementById('material-select').value = mesh.userData.acousticMaterial;
+            } else if (isSource) {
+                document.getElementById('sound-select').value = mesh.userData.soundType;
+            }
+        }
+
+        function updateObjectProperty(property, axis, value) {
+            if (!selectedObject) return;
+            const floatValue = parseFloat(value);
+            if (isNaN(floatValue)) return;
+
+            if (property === 'position') {
+                selectedObject.position[axis] = floatValue;
+            } else if (property === 'scale') {
+                selectedObject.scale[axis] = floatValue;
+                // Skalierung kann die Geometrie von Boxen/Kapseln beeinflussen, aber hier verändern wir nur die Transformation
+            }
+
+            // Aktualisiere das Properties Panel, um die neuen Werte zu zeigen
+            updatePropertiesPanel(selectedObject);
+        }
+
+        function updateMaterial(materialKey) {
+            if (!selectedObject || selectedObject.userData.isAcousticSource || selectedObject.userData.isAcousticReceiver) return;
+            selectedObject.userData.acousticMaterial = materialKey;
+            const materialProps = acousticMaterials[materialKey];
+            selectedObject.material.color.setHex(materialProps.color);
+            showMessage(`Material von ${selectedObject.name} auf ${materialKey} gesetzt.`, 2000);
+        }
+
+        function updateSound(soundType) {
+            if (!selectedObject || !selectedObject.userData.isAcousticSource) return;
+            selectedObject.userData.soundType = soundType;
+            showMessage(`Sound-Typ von ${selectedObject.name} auf ${soundType} gesetzt.`, 2000);
+        }
+
+        function updateSetting(key, value) {
+            settings[key] = isNaN(parseFloat(value)) ? value : parseFloat(value);
+            // Speichere sofort, wenn Einstellungen geändert werden
+            saveState();
+        }
+
+
+        // --- Simulation & Akustik-Logik ---
+
+        function setupAudioSource(sourceMesh) {
+            const soundType = sourceMesh.userData.soundType;
+            const pAudio = sourceMesh.userData.audio;
+
+            // Stoppe vorherige Audio-Wiedergabe
+            pAudio.stop();
+            if (pAudio.source) {
+                pAudio.source.disconnect();
+                pAudio.source = null;
+            }
+
+            // Erzeuge neuen Oszillator oder Noise-Generator (statt eines Audio-Puffers)
+            let generator;
+            if (soundType === 'sinus' || soundType === 'pulse') {
+                generator = new Tone.Oscillator(soundType === 'sinus' ? 440 : 100, soundType).start();
+            } else if (soundType === 'noise') {
+                generator = new Tone.Noise('white').start();
+            } else {
+                // Fallback
+                generator = new Tone.Oscillator(440, 'sine').start();
+            }
+
+            // Verbinde den Generator mit der PositionalAudio-Quelle
+            pAudio.setNodeSource(generator);
+            sourceMesh.userData.toneGenerator = generator;
+            pAudio.setLoop(true);
+            pAudio.setRefDistance(1);
+            pAudio.setMaxDistance(20);
+            pAudio.setRolloffFactor(1);
+        }
+
+
+        function toggleSimulation(start) {
+            const startBtn = document.getElementById('start-sim-btn');
+            const stopBtn = document.getElementById('stop-sim-btn');
+            const receiver = sceneObjects.find(obj => obj.userData.isAcousticReceiver);
+
+            if (!receiver) {
+                showMessage("Füge zuerst einen Sound Empfänger (Kopf) hinzu.", 3000);
+                return;
+            }
+
+            isSimulationRunning = start;
+            controls.enabled = !start; // Deaktiviere OrbitControls während der Simulation
+
+            if (start) {
+                // STARTE Simulation
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
+
+                // Speichere die Viewport-Kamera-Position
+                lastCameraPosition.copy(camera.position);
+                lastCameraTarget.copy(controls.target);
+
+                // Setze die Kamera auf die Position des Empfängers
+                camera.position.copy(receiver.position);
+                camera.lookAt(receiver.position.x, receiver.position.y, receiver.position.z - 1); // Blickrichtung nach vorne (z-Achse)
+
+                // Starte Audio für alle Quellen
+                const sources = sceneObjects.filter(obj => obj.userData.isAcousticSource);
+                sources.forEach(source => {
+                    setupAudioSource(source);
+                });
+
+                // Aktiviere den Audio-Context
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+
+                showMessage("Simulation gestartet. Die Kamera ist am Empfänger.", 4000);
+
+            } else {
+                // STOPPE Simulation
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+
+                // Setze die Kamera zur letzten Viewport-Position zurück
+                camera.position.copy(lastCameraPosition);
+                controls.target.copy(lastCameraTarget);
+                controls.update();
+                controls.enabled = true;
+
+                // Stoppe alle Audio-Quellen
+                sceneObjects.filter(obj => obj.userData.toneGenerator).forEach(source => {
+                    source.userData.toneGenerator.stop();
+                    source.userData.audio.stop();
+                });
+                showMessage("Simulation gestoppt. Viewport-Ansicht wiederhergestellt.", 4000);
+            }
+        }
+
+        function simulateAcoustics() {
+            const receiver = sceneObjects.find(obj => obj.userData.isAcousticReceiver);
+            if (!receiver) return;
+
+            const obstacles = sceneObjects.filter(obj => !obj.userData.isAcousticSource && !obj.userData.isAcousticReceiver);
+            const sources = sceneObjects.filter(obj => obj.userData.isAcousticSource);
+
+            // Die Kamera muss die Position des Empfängers verfolgen, um die HRTF-Wirkung korrekt zu haben
+            camera.position.copy(receiver.position);
+            // Optional: Kamera-Rotation basierend auf Empfänger-Rotation (noch nicht implementiert, da der Empfänger-Kopf sich nicht dreht)
+
+            // Akustische Simulation (vereinfachtes Raycasting)
+            sources.forEach(source => {
+                const sourcePos = source.position;
+                const receiverPos = receiver.position;
+                const rayDirection = receiverPos.clone().sub(sourcePos).normalize();
+                const distance = sourcePos.distanceTo(receiverPos);
+
+                let totalAbsorption = 0;
+                let raysBlocked = 0;
+                const totalRays = settings.raycastCount;
+
+                if (settings.acousticMode === 'raycast') {
+                    for (let i = 0; i < totalRays; i++) {
+                        // Erzeuge leicht gestreute Strahlen (einfache Streuung)
+                        const randomDirection = rayDirection.clone().add(
+                            new THREE.Vector3(
+                                (Math.random() - 0.5) * 0.2,
+                                (Math.random() - 0.5) * 0.2,
+                                (Math.random() - 0.5) * 0.2
+                            )
+                        ).normalize();
+
+                        raycaster.set(sourcePos, randomDirection);
+                        raycaster.far = distance; // Ray geht nur bis zum Empfänger
+
+                        const intersects = raycaster.intersectObjects(obstacles, false);
+
+                        if (intersects.length > 0) {
+                            // Der erste Treffer blockiert den direkten Pfad
+                            const hitObject = intersects[0].object;
+                            const materialKey = hitObject.userData.acousticMaterial || 'concrete';
+                            const absorption = acousticMaterials[materialKey].absorption;
+
+                            totalAbsorption += absorption;
+                            raysBlocked++;
+                        }
+                    }
+                }
+
+                // Durchschnittliche Blockade und Absorption
+                const blockageFactor = raysBlocked / totalRays;
+                const averageAbsorption = totalAbsorption / totalRays;
+
+                // Zusätzliche Lautstärkedämpfung durch Raycasting (zusätzlich zum PositionalAudio-Falloff)
+                // Wenn die Raycasts blockiert sind, dämpfe das Volumen zusätzlich
+                const pAudio = source.userData.audio;
+                if (pAudio) {
+                    // Der PositionalAudio-Knoten handhabt bereits die Distanzdämpfung
+                    // Hier wenden wir eine zusätzliche Dämpfung aufgrund von Hindernissen an.
+                    const raycastAttenuation = 1.0 - (blockageFactor * averageAbsorption);
+                    pAudio.setVolume(raycastAttenuation);
+                }
+            });
+        }
+
+
+        // --- Persistenz (Firestore) ---
+
+        function getDocRef() {
+            if (!window.globals.db || !window.globals.userId) return null;
+            const collectionPath = `/artifacts/${window.globals.appId}/users/${window.globals.userId}/sound_sim_state`;
+            return window.globals.firestore.doc(window.globals.db, collectionPath, settings.saveKey);
+        }
+
+        function saveState() {
+            if (!window.globals.isAuthReady || !window.globals.db || !window.globals.userId) {
+                showMessage("Fehler: Speicherung ist nicht bereit (Firebase/Auth).", 3000);
+                return;
+            }
+
+            const state = {
+                settings: settings,
+                objects: sceneObjects.map(mesh => ({
+                    id: mesh.userData.id,
+                    type: mesh.userData.type,
+                    name: mesh.name,
+                    position: mesh.position.toArray(),
+                    scale: mesh.scale.toArray(),
+                    isAcousticSource: mesh.userData.isAcousticSource,
+                    isAcousticReceiver: mesh.userData.isAcousticReceiver,
+                    acousticMaterial: mesh.userData.acousticMaterial,
+                    soundType: mesh.userData.soundType
+                })),
+                objectIdCounter: objectIdCounter,
+                cameraPosition: camera.position.toArray(),
+                cameraTarget: controls.target.toArray()
+            };
+
+            const docRef = getDocRef();
+            if (docRef) {
+                window.globals.firestore.setDoc(docRef, state)
+                    .then(() => showMessage("Szene und Einstellungen erfolgreich gespeichert!", 3000))
+                    .catch(error => showMessage(`Speicherfehler: ${error.message}`, 5000));
+            }
+        }
+
+        function loadState() {
+            if (!window.globals.isAuthReady || !window.globals.db || !window.globals.userId) {
+                showMessage("Fehler: Laden ist nicht bereit (Firebase/Auth).", 3000);
+                return;
+            }
+
+            const docRef = getDocRef();
+            if (docRef) {
+                window.globals.firestore.getDoc(docRef)
+                    .then(docSnap => {
+                        if (docSnap.exists()) {
+                            const state = docSnap.data();
+                            applyState(state);
+                            showMessage("Szene und Einstellungen erfolgreich geladen!", 3000);
+                        } else {
+                            showMessage("Keine gespeicherte Szene gefunden. Starte mit Standardeinstellungen.", 3000);
+                        }
+                    })
+                    .catch(error => showMessage(`Ladefehler: ${error.message}`, 5000));
+            }
+        }
+
+        function applyState(state) {
+            // 1. Einstellungen anwenden
+            settings = { ...settings, ...state.settings };
+            document.getElementById('render-quality').value = settings.renderFps;
+            document.getElementById('raycast-quality').value = settings.raycastCount;
+            document.getElementById('acoustic-mode').value = settings.acousticMode;
+
+            // 2. Szene aufräumen
+            sceneObjects.forEach(mesh => scene.remove(mesh));
+            sceneObjects = [];
+            objectIdCounter = state.objectIdCounter || 0;
+            selectedObject = null;
+
+            // 3. Objekte neu erstellen
+            state.objects.forEach(objData => {
+                const geometry = createGeometry(objData.type, objData.scale[0], objData.scale[1], objData.scale[2]);
+                const materialProps = acousticMaterials[objData.acousticMaterial] || { color: 0x00FF00 };
+                const material = new THREE.MeshPhongMaterial({
+                    color: objData.isAcousticSource ? 0xFF0000 : (objData.isAcousticReceiver ? 0x9999FF : materialProps.color),
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+
+                mesh.position.fromArray(objData.position);
+                mesh.scale.fromArray(objData.scale);
+                mesh.name = objData.name;
+                mesh.userData = { ...objData };
+
+                if (objData.isAcousticReceiver) {
+                    // Erstelle Mikrofon-Geometrie für den Kopf neu
+                    const micGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 16);
+                    const micMaterial = new THREE.MeshPhongMaterial({ color: 0xFFD700 });
+                    const rightMic = new THREE.Mesh(micGeometry, micMaterial);
+                    rightMic.rotation.z = Math.PI / 2;
+                    rightMic.position.set(0.3, 0, 0);
+                    mesh.add(rightMic);
+                    const leftMic = new THREE.Mesh(micGeometry, micMaterial);
+                    leftMic.rotation.z = Math.PI / 2;
+                    leftMic.position.set(-0.3, 0, 0);
+                    mesh.add(leftMic);
+                }
+
+                if (objData.isAcousticSource) {
+                    // Audio-Objekt neu erstellen
+                    const pAudio = new THREE.PositionalAudio(listener);
+                    mesh.add(pAudio);
+                    mesh.userData.audio = pAudio;
+                }
+
+                scene.add(mesh);
+                sceneObjects.push(mesh);
+            });
+
+            // 4. Kamera-Position anwenden
+            if (state.cameraPosition && state.cameraTarget) {
+                camera.position.fromArray(state.cameraPosition);
+                controls.target.fromArray(state.cameraTarget);
+                controls.update();
+            }
+        }
+
+        function displayUserInfo() {
+            const auth = window.globals.auth;
+            // Destrukturieren Sie onAuthStateChanged aus den globalen Methoden
+            const { onAuthStateChanged } = window.globals.authMethods || {};
+            const userInfoEl = document.getElementById('user-info');
+            
+            if (auth && onAuthStateChanged) {
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userInfoEl.textContent = `User ID: ${user.uid}`;
+                    } else {
+                        userInfoEl.textContent = `User ID: Nicht angemeldet`;
+                    }
+                });
+            } else {
+                userInfoEl.textContent = `User ID: Speicherung deaktiviert`;
+            }
+        }
+
+    </script>
+</body>
+                  </html>
