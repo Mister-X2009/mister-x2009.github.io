@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My projects</title>
+  <title>Meine Projekte</title>
 
   <!-- Basic SEO Meta Tags -->
   <meta name="description" content="Übersicht meiner Projekte aus Physik, Chemie und Programmierung" />
@@ -21,10 +21,13 @@
   <link rel="icon" href="favicon.ico" type="image/x-icon" />
 
   <!-- Vibe Coding Disclaimer -->
-  <!-- This project contains vibe coding elements. The code may prioritize aesthetic or expressive style over strict structure. -->
+  <div style="text-align:center; font-size:0.9rem; opacity:0.8; margin-top:1rem;">
+    <em>This project includes vibe coding elements. Style and aesthetics may take priority over strict structure.</em>
+  </div>
 
   <style>
     :root {
+      --max-content-width: 900px;
       --bg: #f5f5f5;
       --text: #222;
       --card-bg: #fff;
@@ -41,6 +44,9 @@
     }
 
     body {
+      max-width: var(--max-content-width);
+      margin: auto;
+      padding: 1.5rem;
       font-family: Arial, sans-serif;
       margin: 2rem;
       background: var(--bg);
@@ -92,7 +98,9 @@
     }
 
     .project img {
-      max-width: 150px;
+      width: 100%;
+      max-width: 250px;
+      height: auto;
       display: block;
       margin-bottom: 0.5rem;
       border-radius: 6px;
