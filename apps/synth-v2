@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Liquid Glass Synth</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* --- Liquid Glass Theme & Animation --- */
+        body {
+            margin: 0;
+            background: linear-gradient(-45deg, #0f0c29, #302b63, #24243e, #1a0b2e);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            color: #fff;
+            font-family: 'Inter', system-ui, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Glass Panel Utility */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Custom Sliders (Liquid Style) */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        
+        /* Track */
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        /* Thumb */
+        input[type=range]::-webkit-slider-thumb {
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.9);
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -8px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5), inset 0 0 5px rgba(0,0,0,0.1);
+            backdrop-filter: blur(2px);
+        }
+
+        /* Vertical Sliders Support */
+        .slider-vertical {
+            writing-mode: bt-lr; /* IE/Edge */
+            -webkit-appearance: slider-vertical; 
+            width: 8px;
+            height: 100%;
+        }
+
+        /* Buttons */
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.7);
+            transition: all 0.2s ease;
+        }
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-1px);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+        }
+        .glass-btn.active {
+            background: rgba(139, 92, 246, 0.4); /* Purple tint */
+            border-color: rgba(167, 139, 250, 0.5);
+            color: white;
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+        }
+
+        /* Keyboard */
+        .key {
+            position: relative;
+            border-radius: 0 0 6px 6px;
+            transition: all 0.1s;
+            box-shadow: inset 0 -5px 10px rgba(0,0,0,0.2);
+        }
+        .key-white {
+            background: rgba(255, 255, 255, 0.9);
+            height: 100%;
+            z-index: 1;
+        }
+        .key-black {
+            background: rgba(10, 10, 10, 0.9);
+            height: 60%;
+            z-index: 2;
+            margin-left: -12px;
+            margin-right: -12px;
+            width: 24px;
+        }
+        .key.active {
+            background: linear-gradient(to bottom, #a78bfa, #8b5cf6) !important;
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.6);
+            transform: translateY(2px);
+        }
+
+        /* Scrollbar Hide */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+</head>
+<body class="flex flex-col h-full w-full">
+
+    <!-- Top Bar: Header & MIDI -->
+    <div class="glass-panel mx-2 mt-2 p-3 flex justify-between items-center z-20 flex-shrink-0">
+        <div class="flex items-center gap-2">
+            <div id="statusLed" class="w-3 h-3 rounded-full bg-white/20 shadow-[0_0_10px_rgba(255,255,255,0.2)] transition-colors duration-100"></div>
+            <h1 class="text-lg font-bold tracking-widest text-white/90">LIQUID<span class="text-purple-400 font-light">SYNTH</span></h1>
+        </div>
+        <select id="midiSelect" class="bg-black/20 text-white/80 border border-white/10 rounded px-3 py-1 text-xs focus:outline-none backdrop-blur-md">
+            <option value="-1">MIDI Suche...</option>
+        </select>
+    </div>
+
+    <!-- Main Work Area -->
+    <div class="flex-1 overflow-y-auto p-2 pb-4 space-y-2 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-4 lg:p-4">
+        
+        <!-- Column 1: Visualizer & Oscillator (Mobile: Top, Desktop: Left) -->
+        <div class="lg:col-span-4 space-y-2 lg:space-y-4 flex flex-col">
+            <!-- Visualizer -->
+            <div class="glass-panel h-32 lg:h-48 relative overflow-hidden flex-shrink-0">
+                <canvas id="scope" class="w-full h-full"></canvas>
+                <div class="absolute top-2 right-2 text-[10px] text-white/40 font-mono">OSCILLOSCOPE</div>
+            </div>
+            
+            <!-- Oscillator Controls -->
+            <div class="glass-panel p-4 flex-1 flex flex-col justify-center">
+                <div class="text-xs text-purple-300 uppercase tracking-wider mb-3">Klangfarbe (Welle)</div>
+                <div class="grid grid-cols-4 gap-2 mb-6">
+                    <button class="glass-btn active py-3 rounded-lg text-xl" onclick="setWave('sawtooth', this)">▲</button>
+                    <button class="glass-btn py-3 rounded-lg text-xl" onclick="setWave('square', this)">■</button>
+                    <button class="glass-btn py-3 rounded-lg text-xl" onclick="setWave('triangle', this)">▴</button>
+                    <button class="glass-btn py-3 rounded-lg text-xl" onclick="setWave('sine', this)">●</button>
+                </div>
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs text-white/60">
+                        <span>Detune</span>
+                        <span id="val-detune">0</span>
+                    </div>
+                    <input type="range" min="-100" max="100" value="0" oninput="updateParam('detune', this.value)">
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 2: Envelope (ADSR) - The "Shape" Maker -->
+        <div class="glass-panel lg:col-span-5 p-4 flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <div class="text-xs text-purple-300 uppercase tracking-wider">Hüllkurve (Form)</div>
+                <div class="text-[10px] text-white/40">ADSR</div>
+            </div>
+            
+            <div class="flex-1 flex justify-between items-end gap-2 px-2">
+                <!-- Attack -->
+                <div class="flex flex-col items-center h-full group w-full">
+                    <div class="flex-1 relative w-full flex justify-center bg-white/5 rounded-full py-2">
+                        <input type="range" min="0.01" max="2" step="0.01" value="0.05" 
+                               class="slider-vertical h-full w-full opacity-0 absolute z-10 cursor-pointer" 
+                               oninput="updateParam('attack', this.value); updateVisualSlider(this, 'fill-attack')">
+                        <div class="w-2 bg-white/10 rounded-full h-full relative overflow-hidden">
+                             <div id="fill-attack" class="absolute bottom-0 left-0 w-full bg-purple-400/80 shadow-[0_0_15px_rgba(168,85,247,0.5)] transition-all duration-75" style="height: 5%;"></div>
+                        </div>
+                    </div>
+                    <div class="text-[10px] mt-2 font-medium text-white/70">ATTACK</div>
+                    <div class="text-[9px] text-white/30">Anschlag</div>
+                </div>
+
+                <!-- Decay -->
+                <div class="flex flex-col items-center h-full w-full">
+                    <div class="flex-1 relative w-full flex justify-center bg-white/5 rounded-full py-2">
+                        <input type="range" min="0.1" max="2" step="0.01" value="0.3" 
+                               class="slider-vertical h-full w-full opacity-0 absolute z-10 cursor-pointer"
+                               oninput="updateParam('decay', this.value); updateVisualSlider(this, 'fill-decay')">
+                        <div class="w-2 bg-white/10 rounded-full h-full relative overflow-hidden">
+                             <div id="fill-decay" class="absolute bottom-0 left-0 w-full bg-purple-400/60 transition-all duration-75" style="height: 15%;"></div>
+                        </div>
+                    </div>
+                    <div class="text-[10px] mt-2 font-medium text-white/70">DECAY</div>
+                    <div class="text-[9px] text-white/30">Abfall</div>
+                </div>
+
+                <!-- Sustain -->
+                <div class="flex flex-col items-center h-full w-full">
+                    <div class="flex-1 relative w-full flex justify-center bg-white/5 rounded-full py-2">
+                        <input type="range" min="0" max="1" step="0.01" value="0.6" 
+                               class="slider-vertical h-full w-full opacity-0 absolute z-10 cursor-pointer"
+                               oninput="updateParam('sustain', this.value); updateVisualSlider(this, 'fill-sustain')">
+                        <div class="w-2 bg-white/10 rounded-full h-full relative overflow-hidden">
+                             <div id="fill-sustain" class="absolute bottom-0 left-0 w-full bg-purple-400/60 transition-all duration-75" style="height: 60%;"></div>
+                        </div>
+                    </div>
+                    <div class="text-[10px] mt-2 font-medium text-white/70">SUSTAIN</div>
+                    <div class="text-[9px] text-white/30">Halten</div>
+                </div>
+
+                <!-- Release -->
+                <div class="flex flex-col items-center h-full w-full">
+                    <div class="flex-1 relative w-full flex justify-center bg-white/5 rounded-full py-2">
+                        <input type="range" min="0.1" max="5" step="0.01" value="0.8" 
+                               class="slider-vertical h-full w-full opacity-0 absolute z-10 cursor-pointer"
+                               oninput="updateParam('release', this.value); updateVisualSlider(this, 'fill-release')">
+                        <div class="w-2 bg-white/10 rounded-full h-full relative overflow-hidden">
+                             <div id="fill-release" class="absolute bottom-0 left-0 w-full bg-purple-400/80 shadow-[0_0_15px_rgba(168,85,247,0.5)] transition-all duration-75" style="height: 20%;"></div>
+                        </div>
+                    </div>
+                    <div class="text-[10px] mt-2 font-medium text-white/70">RELEASE</div>
+                    <div class="text-[9px] text-white/30">Ausklang</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 3: Filter & Master -->
+        <div class="lg:col-span-3 flex flex-col gap-2 lg:gap-4">
+            <!-- Filter -->
+            <div class="glass-panel p-4 flex-1">
+                <div class="text-xs text-purple-300 uppercase tracking-wider mb-4">Filter</div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-xs text-white/60 mb-1">
+                            <span>Cutoff</span>
+                            <span id="val-cutoff">2000Hz</span>
+                        </div>
+                        <input type="range" min="20" max="10000" step="10" value="2000" oninput="updateParam('cutoff', this.value)">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-white/60 mb-1">
+                            <span>Resonanz</span>
+                            <span id="val-res">1</span>
+                        </div>
+                        <input type="range" min="0" max="20" step="0.1" value="1" oninput="updateParam('res', this.value)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Master -->
+            <div class="glass-panel p-4">
+                 <div class="flex justify-between text-xs text-white/60 mb-1">
+                    <span>Master Volume</span>
+                    <span id="val-vol">50%</span>
+                </div>
+                <input type="range" min="0" max="1" step="0.01" value="0.5" oninput="updateParam('volume', this.value)">
+            </div>
+        </div>
+    </div>
+
+    <!-- Virtual Keyboard (Scrollable on Mobile) -->
+    <div class="glass-panel mx-2 mb-2 h-32 lg:h-40 flex-shrink-0 overflow-hidden relative z-10">
+        <div id="keyboard-scroll" class="w-full h-full overflow-x-auto no-scrollbar flex items-start relative pt-1 pl-1">
+            <!-- Keys injected here -->
+        </div>
+    </div>
+
+<script>
+/**
+ * AUDIO ENGINE (Polyphonic)
+ */
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+let masterGain;
+let analyser;
+
+// Parameters
+const params = {
+    waveform: 'sawtooth',
+    detune: 0,
+    attack: 0.05,
+    decay: 0.3,
+    sustain: 0.6,
+    release: 0.8,
+    cutoff: 2000,
+    res: 1,
+    volume: 0.5,
+    modWheel: 0,
+    pedal: false
+};
+
+// State
+const activeVoices = new Map();
+const sustainedNotes = new Set();
+
+class Voice {
+    constructor(note, velocity) {
+        this.note = note;
+        this.ctx = audioCtx;
+        const now = this.ctx.currentTime;
+
+        // Frequency
+        const freq = 440 * Math.pow(2, (note - 69) / 12);
+
+        // Oscillator
+        this.osc = this.ctx.createOscillator();
+        this.osc.type = params.waveform;
+        this.osc.frequency.value = freq;
+        this.osc.detune.value = params.detune;
+
+        // LFO (Vibrato)
+        this.lfo = this.ctx.createOscillator();
+        this.lfo.frequency.value = 5;
+        this.lfoGain = this.ctx.createGain();
+        this.lfoGain.gain.value = params.modWheel * 50;
+        this.lfo.connect(this.lfoGain);
+        this.lfoGain.connect(this.osc.detune);
+        this.lfo.start();
+
+        // Filter
+        this.filter = this.ctx.createBiquadFilter();
+        this.filter.type = 'lowpass';
+        this.filter.frequency.value = params.cutoff;
+        this.filter.Q.value = params.res;
+
+        // VCA (Amp)
+        this.amp = this.ctx.createGain();
+        this.amp.gain.value = 0;
+
+        // Chain
+        this.osc.connect(this.filter);
+        this.filter.connect(this.amp);
+        this.amp.connect(masterGain);
+
+        // Envelope: Attack -> Decay -> Sustain
+        const velScale = velocity / 127;
+        this.amp.gain.cancelScheduledValues(now);
+        this.amp.gain.setValueAtTime(0, now);
+        this.amp.gain.linearRampToValueAtTime(velScale, now + params.attack);
+        this.amp.gain.linearRampToValueAtTime(velScale * params.sustain, now + params.attack + params.decay);
+
+        this.osc.start(now);
+    }
+
+    stop() {
+        const now = this.ctx.currentTime;
+        const currentVal = this.amp.gain.value;
+        
+        this.amp.gain.cancelScheduledValues(now);
+        this.amp.gain.setValueAtTime(currentVal, now);
+        this.amp.gain.exponentialRampToValueAtTime(0.001, now + params.release);
+
+        this.osc.stop(now + params.release + 0.1);
+        this.lfo.stop(now + params.release + 0.1);
+    }
+
+    update() {
+        // Realtime updates for parameters
+        const now = this.ctx.currentTime;
+        this.filter.frequency.setTargetAtTime(params.cutoff, now, 0.1);
+        this.filter.Q.setTargetAtTime(params.res, now, 0.1);
+        this.osc.detune.setTargetAtTime(params.detune, now, 0.1);
+        this.lfoGain.gain.setTargetAtTime(params.modWheel * 50, now, 0.1);
+    }
+}
+
+function initAudio() {
+    if(audioCtx) return;
+    audioCtx = new AudioContext();
+    
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = params.volume;
+    
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    
+    masterGain.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    
+    drawScope();
+}
+
+/**
+ * INPUT HANDLING (MIDI & TOUCH)
+ */
+function noteOn(note, velocity) {
+    if(!audioCtx) initAudio();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+
+    // GUI
+    const key = document.querySelector(`[data-note="${note}"]`);
+    if(key) key.classList.add('active');
+
+    // Audio
+    if(activeVoices.has(note)) {
+        activeVoices.get(note).stop();
+    }
+    const v = new Voice(note, velocity);
+    activeVoices.set(note, v);
+}
+
+function noteOff(note) {
+    // GUI
+    const key = document.querySelector(`[data-note="${note}"]`);
+    if(key) key.classList.remove('active');
+
+    if(params.pedal) {
+        sustainedNotes.add(note);
+        return;
+    }
+
+    if(activeVoices.has(note)) {
+        activeVoices.get(note).stop();
+        activeVoices.delete(note);
+    }
+}
+
+function pedalUp() {
+    sustainedNotes.forEach(n => {
+        if(!document.querySelector(`[data-note="${n}"]`)?.classList.contains('active')) { // If key not physically held
+             if(activeVoices.has(n)) {
+                activeVoices.get(n).stop();
+                activeVoices.delete(n);
+            }
+        }
+    });
+    sustainedNotes.clear();
+}
+
+// Parameter Updates
+window.updateParam = (key, val) => {
+    const v = parseFloat(val);
+    params[key] = v;
+    
+    // Update Label
+    const label = document.getElementById(`val-${key}`);
+    if(label) label.innerText = key === 'volume' ? Math.round(v*100)+'%' : v;
+
+    // Update active voices
+    activeVoices.forEach(voice => voice.update());
+};
+
+window.setWave = (type, btn) => {
+    params.waveform = type;
+    document.querySelectorAll('.glass-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+};
+
+window.updateVisualSlider = (input, fillId) => {
+    const percent = ((input.value - input.min) / (input.max - input.min)) * 100;
+    document.getElementById(fillId).style.height = `${percent}%`;
+};
+
+// MIDI Access
+if (navigator.requestMIDIAccess) {
+    navigator.requestMIDIAccess().then(access => {
+        const select = document.getElementById('midiSelect');
+        const inputs = Array.from(access.inputs.values());
+        
+        const refreshMIDI = () => {
+             select.innerHTML = '<option value="-1">Wähle MIDI Gerät...</option>';
+             Array.from(access.inputs.values()).forEach(input => {
+                const opt = document.createElement('option');
+                opt.value = input.id;
+                opt.text = input.name;
+                select.appendChild(opt);
+             });
+        };
+        
+        refreshMIDI();
+        access.onstatechange = refreshMIDI;
+
+        select.addEventListener('change', (e) => {
+             inputs.forEach(i => i.onmidimessage = null);
+             const input = access.inputs.get(e.target.value);
+             if(input) input.onmidimessage = handleMIDI;
+        });
+        
+        // Auto select first
+        if(inputs.length > 0) {
+            inputs[0].onmidimessage = handleMIDI;
+            select.value = inputs[0].id;
+        }
+    });
+}
+
+function handleMIDI(msg) {
+    const [status, d1, d2] = msg.data;
+    const cmd = status >> 4;
+    
+    // LED Flash
+    const led = document.getElementById('statusLed');
+    led.style.backgroundColor = '#a78bfa';
+    led.style.boxShadow = '0 0 15px #a78bfa';
+    setTimeout(() => {
+        led.style.backgroundColor = 'rgba(255,255,255,0.2)';
+        led.style.boxShadow = '0 0 10px rgba(255,255,255,0.2)';
+    }, 50);
+
+    if(cmd === 9 && d2 > 0) noteOn(d1, d2);
+    else if(cmd === 8 || (cmd === 9 && d2 === 0)) noteOff(d1);
+    else if(cmd === 11) { // CC
+        const norm = d2 / 127;
+        switch(d1) {
+            case 64: // Pedal
+                params.pedal = d2 > 63;
+                if(!params.pedal) pedalUp();
+                break;
+            case 1: params.modWheel = norm; activeVoices.forEach(v=>v.update()); break;
+            case 74: // Cutoff
+                 params.cutoff = 20 + (norm * 10000); 
+                 document.querySelector('input[oninput*="cutoff"]').value = params.cutoff;
+                 activeVoices.forEach(v=>v.update());
+                 break;
+        }
+    }
+}
+
+/**
+ * VISUALS & GUI GENERATION
+ */
+function drawScope() {
+    const cvs = document.getElementById('scope');
+    const ctx = cvs.getContext('2d');
+    const buffer = new Uint8Array(analyser.frequencyBinCount);
+    
+    function render() {
+        requestAnimationFrame(render);
+        cvs.width = cvs.clientWidth;
+        cvs.height = cvs.clientHeight;
+        
+        analyser.getByteTimeDomainData(buffer);
+        
+        ctx.clearRect(0,0,cvs.width, cvs.height);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(167, 139, 250, 0.8)'; // Purple-ish
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'rgba(167, 139, 250, 0.5)';
+        
+        ctx.beginPath();
+        const slice = cvs.width * 1.0 / buffer.length;
+        let x = 0;
+        
+        for(let i=0; i<buffer.length; i++) {
+            const v = buffer[i] / 128.0;
+            const y = v * cvs.height / 2;
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            x += slice;
+        }
+        ctx.stroke();
+    }
+    render();
+}
+
+// Generate Keyboard
+function initKeys() {
+    const container = document.getElementById('keyboard-scroll');
+    const notes = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    
+    // C2 (36) to C6 (84)
+    for(let i=36; i<=84; i++) {
+        const isBlack = notes[i%12].includes('#');
+        const el = document.createElement('div');
+        el.className = `key ${isBlack ? 'key-black' : 'key-white'} flex-shrink-0 cursor-pointer`;
+        el.dataset.note = i;
+        
+        if(!isBlack) el.style.width = '40px'; // Responsive width handle via flex normally, but fixed is safer for piano
+        
+        // Events
+        const start = (e) => { e.preventDefault(); noteOn(i, 100); };
+        const stop = (e) => { e.preventDefault(); noteOff(i); };
+        
+        el.addEventListener('mousedown', start);
+        el.addEventListener('mouseup', stop);
+        el.addEventListener('mouseleave', stop);
+        el.addEventListener('touchstart', start);
+        el.addEventListener('touchend', stop);
+        
+        container.appendChild(el);
+    }
+    
+    // Scroll to middle C (C4 = 60) roughly
+    setTimeout(() => {
+         const c4 = document.querySelector('[data-note="60"]');
+         if(c4) c4.scrollIntoView({inline: "center", behavior: "smooth"});
+    }, 100);
+}
+
+// Init visual sliders position
+window.onload = () => {
+    document.querySelectorAll('.slider-vertical').forEach(el => {
+        const fillId = el.getAttribute('oninput').match(/'([^']+)'\)$/)[1];
+        updateVisualSlider(el, fillId);
+    });
+    initKeys();
+    
+    // Global click to start audio context
+    document.body.addEventListener('click', initAudio, {once:true});
+    document.body.addEventListener('touchstart', initAudio, {once:true});
+};
+
+</script>
+</body>
+</html>
