@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MaterialForge PRO PBR Editor</title>
+    <!-- Three.js für 3D Rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Fengari für Lua Scripting im Browser -->
+    <script src="https://cdn.jsdelivr.net/npm/fengari-web@0.1.4/dist/fengari-web.min.js"></script>
+    <style>
+        :root {
+            --primary: #6200ee; --primary-variant: #3700b3; --secondary: #03dac6;
+            --bg-color: #f5f5f5; --surface: #ffffff; --text-color: #000000;
+            --text-secondary: #666666; --border-color: #e0e0e0;
+            --shadow: 0 4px 6px rgba(0,0,0,0.1);
+            --nav-width: 280px; --anim-speed: 0.3s;
+        }
+        [data-theme="dark"] {
+            --primary: #bb86fc; --primary-variant: #3700b3; --secondary: #03dac6;
+            --bg-color: #121212; --surface: #1e1e1e; --text-color: #ffffff;
+            --text-secondary: #aaaaaa; --border-color: #333333;
+            --shadow: 0 4px 6px rgba(0,0,0,0.5);
+        }
+        * { box-sizing: border-box; user-select: none; }
+        body { margin: 0; font-family: 'Roboto', sans-serif; background: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* --- Layout & Nav --- */
+        header { height: 60px; background: var(--surface); box-shadow: var(--shadow); display: flex; align-items: center; padding: 0 20px; z-index: 100; justify-content: space-between; }
+        .icon-btn { background: none; border: none; cursor: pointer; padding: 10px; border-radius: 50%; transition: 0.2s; color: var(--text-color); }
+        .icon-btn:hover { background: rgba(128,128,128,0.1); }
+        .icon-btn svg { width: 24px; height: 24px; fill: currentColor; }
+        .app-title { font-size: 1.25rem; font-weight: 500; margin-left: 20px; }
+        .drawer { position: fixed; top: 60px; left: 0; bottom: 0; width: var(--nav-width); background: var(--surface); transform: translateX(-100%); transition: transform var(--anim-speed); z-index: 90; border-right: 1px solid var(--border-color); padding-top: 10px; }
+        .drawer.open { transform: translateX(0); }
+        .nav-item { padding: 15px 25px; cursor: pointer; display: flex; align-items: center; font-weight: 500; color: var(--text-secondary); transition: 0.2s; border-radius: 0 25px 25px 0; margin-right: 10px; }
+        .nav-item:hover { background: rgba(128,128,128,0.1); }
+        .nav-item.active { background: rgba(98, 0, 238, 0.1); color: var(--primary); }
+        [data-theme="dark"] .nav-item.active { background: rgba(187, 134, 252, 0.1); }
+        .nav-item svg { margin-right: 20px; width: 24px; height: 24px; fill: currentColor; }
+        main { flex: 1; position: relative; overflow: hidden; }
+        .view { position: absolute; inset: 0; background: var(--bg-color); opacity: 0; pointer-events: none; transform: scale(0.98); transition: 0.3s; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
+        .view.active { opacity: 1; pointer-events: auto; transform: scale(1); }
+
+        /* --- Editor UI --- */
+        .toolbar { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; background: var(--surface); padding: 10px; border-radius: 8px; box-shadow: var(--shadow); align-items: center; }
+        .chip-group { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 5px; }
+        .chip { padding: 6px 12px; border-radius: 16px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem; transition: 0.2s; background: var(--surface); color: var(--text-color); white-space: nowrap; }
+        .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        [data-theme="dark"] .chip.active { color: #000; }
+        .canvas-container { flex: 1; display: flex; justify-content: center; align-items: center; background: rgba(128,128,128,0.1); border-radius: 8px; overflow: auto; min-height: 400px; padding: 20px; }
+        canvas.paint-canvas { background: #fff; box-shadow: 0 0 20px rgba(0,0,0,0.2); cursor: crosshair; image-rendering: pixelated; }
+        .controls-area { display: grid; grid-template-columns: 250px 1fr; gap: 20px; margin-top: 15px; height: 250px; }
+        .controls-sidebar { overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .control-group { background: var(--surface); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); }
+        .control-group label { display: block; font-size: 0.8rem; margin-bottom: 5px; color: var(--text-secondary); }
+        input[type="range"], select { width: 100%; accent-color: var(--primary); }
+        input[type="color"] { width: 100%; height: 30px; border: none; cursor: pointer; }
+        .btn { background: var(--primary); color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500; transition: 0.2s; display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+        [data-theme="dark"] .btn { color: #000; }
+        .btn:hover { opacity: 0.9; }
+        .btn.secondary { background: transparent; border: 1px solid var(--border-color); color: var(--text-color); }
+        
+        /* Lua Editor */
+        .lua-editor-container { display: flex; flex-direction: column; height: 100%; background: var(--surface); border-radius: 8px; border: 1px solid var(--border-color); overflow: hidden; }
+        .lua-header { padding: 5px 10px; background: rgba(128,128,128,0.1); font-size: 0.8rem; font-weight: bold; }
+        #lua-code-area { flex: 1; resize: none; border: none; padding: 10px; font-family: monospace; background: var(--surface); color: var(--text-color); outline: none; white-space: pre; overflow: auto; }
+
+        /* --- 3D View --- */
+        #view-3d { padding: 0; }
+        #three-canvas { width: 100%; height: 100%; display: block; }
+        .overlay-controls { position: absolute; bottom: 20px; right: 20px; background: var(--surface); padding: 15px; border-radius: 8px; box-shadow: var(--shadow); width: 250px; }
+
+        /* --- Setup Modal --- */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 200; display: flex; justify-content: center; align-items: center; }
+        .modal-card { background: var(--surface); padding: 30px; border-radius: 12px; width: 400px; max-width: 90%; box-shadow: var(--shadow); }
+        .modal-card h2 { margin-top: 0; color: var(--primary); }
+        .size-inputs { display: flex; gap: 10px; margin: 20px 0; }
+        .size-inputs div { flex: 1; }
+        .size-inputs input { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color); color: var(--text-color); }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body data-theme="dark">
+
+<!-- SETUP MODAL -->
+<div class="modal-overlay" id="setupModal">
+    <div class="modal-card">
+        <h2>Willkommen bei MaterialForge Pro</h2>
+        <p>Bitte lege die Größe deiner Textur-Leinwand fest, um zu beginnen.</p>
+        <div class="size-inputs">
+            <div>
+                <label>Breite (px)</label>
+                <input type="number" id="setup-width" value="1024" min="256" max="4096" step="128">
+            </div>
+            <div>
+                <label>Höhe (px)</label>
+                <input type="number" id="setup-height" value="1024" min="256" max="4096" step="128">
+            </div>
+        </div>
+        <button class="btn" style="width:100%; justify-content: center;" id="startBtn">Projekt Erstellen</button>
+    </div>
+</div>
+
+<header>
+    <div style="display:flex; align-items:center;">
+        <button class="icon-btn" id="burgerBtn"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+        <div class="app-title">MaterialForge PRO</div>
+    </div>
+    <button class="icon-btn" id="themeToggle">
+        <svg id="icon-sun" viewBox="0 0 24 24" class="hidden"><path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-1 16.95h2V19.5h-2v2.95zm-7.45-3.91l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z"/></svg>
+        <svg id="icon-moon" viewBox="0 0 24 24"><path d="M21.07 16.13c1.61-.3 3.04-.92 4.26-1.76l-1.41-1.41c-1.63 1.02-3.63 1.54-5.92 1.07-4.46-.92-7.38-5.39-6.47-9.85.3-1.49.9-2.83 1.68-4l-1.41-1.41C9.76 1.12 6.5 3.21 4.35 7.22 1.66 12.25 3.53 18.54 8.56 21.23c3.66 1.96 7.97 1.46 11.08-.52l-1.41-1.41c-.86.63-1.96 1.04-3.16.83z"/></svg>
+    </button>
+</header>
+
+<nav class="drawer" id="drawer">
+    <div class="nav-item active" data-target="view-editor"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Editor</div>
+    <div class="nav-item" data-target="view-3d"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>3D Vorschau</div>
+</nav>
+
+<main id="main">
+    <!-- EDITOR VIEW -->
+    <div id="view-editor" class="view active">
+        <div class="toolbar">
+            <span style="font-weight:500; margin-right:10px;">Kanal:</span>
+            <div class="chip-group">
+                <div class="chip active" onclick="app.setChannel('albedo')">Albedo (Farbe)</div>
+                <div class="chip" onclick="app.setChannel('roughness')">Roughness</div>
+                <div class="chip" onclick="app.setChannel('metalness')">Metalness</div>
+                <div class="chip" onclick="app.setChannel('ao')">Occlusion</div>
+                <div class="chip" onclick="app.setChannel('height')">Height</div>
+            </div>
+            <div style="flex:1;"></div>
+            <input type="file" id="img-import-input" accept="image/png, image/jpeg" hidden>
+            <button class="btn secondary" onclick="document.getElementById('img-import-input').click()">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5-7l-3 3.72L9 13l-3 4h12l-4-5z"/></svg>
+                Bild Importieren
+            </button>
+            <button class="btn secondary" onclick="app.painter.clearLayer()">Leeren</button>
+            <button class="btn secondary" onclick="app.painter.fillLayer()">Füllen</button>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="paintCanvas" class="paint-canvas"></canvas>
+        </div>
+
+        <div class="controls-area">
+            <div class="controls-sidebar">
+                <div class="control-group">
+                    <label>Pinsel Engine</label>
+                    <select id="brush-engine">
+                        <option value="standard">Standard (Weich)</option>
+                        <option value="noise">Noise (Muster)</option>
+                        <option value="lua">Lua Script (Erweitert)</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Größe: <span id="val-size">50</span>px</label>
+                    <input type="range" id="brush-size" min="1" max="300" value="50">
+                </div>
+                <div class="control-group">
+                    <label>Deckkraft Basis: <span id="val-opacity">100</span>%</label>
+                    <input type="range" id="brush-opacity" min="1" max="100" value="100">
+                </div>
+                <div class="control-group" id="color-control-group">
+                    <label>Farbe</label>
+                    <input type="color" id="brush-color" value="#ff0000">
+                </div>
+                <div class="control-group" id="value-control-group" style="display:none;">
+                    <label>Grauwert: <span id="val-gray">1.00</span></label>
+                    <input type="range" id="brush-value" min="0" max="255" value="255">
+                </div>
+            </div>
+            
+            <!-- Dynamic Content Area (Lua Editor or other future tools) -->
+            <div id="dynamic-tools-area">
+                <div id="lua-editor-container" class="lua-editor-container hidden">
+                    <div class="lua-header">Lua Script Pinsel Logik (muss 'calculateOpacity' definieren)</div>
+                    <textarea id="lua-code-area" spellcheck="false">
+-- Implementiere deine Pinsel-Logik
+-- x, y: Position, t: Zeit, p: Druck
+-- Rückgabe: Deckkraft (0.0 - 1.0)
+
+function calculateOpacity(x, y, t, p)
+  -- Beispiel: Pulsierender Sinus
+  local wave = math.sin(x / 50 + t * 5)
+  return (wave + 1) / 2 * p
+end
+</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3D VIEW -->
+    <div id="view-3d" class="view">
+        <div id="three-canvas"></div>
+        <div class="overlay-controls">
+            <h3>Rendering Optionen</h3>
+            <div class="control-group">
+                <label>Displacement Stärke</label>
+                <input type="range" id="disp-scale" min="0" max="2" step="0.01" value="0.2">
+            </div>
+            <div class="control-group">
+                <label>Licht Intensität</label>
+                <input type="range" id="light-int" min="0" max="3" step="0.1" value="1">
+            </div>
+            <div class="control-group">
+                <label>Mesh Auflösung</label>
+                <select id="mesh-res" style="width:100%; padding:5px;">
+                    <option value="128">Mittel (128)</option>
+                    <option value="256" selected>Hoch (256)</option>
+                    <option value="512">Ultra (512)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+// --- Fengari Lua Setup Wrapper ---
+class LuaHost {
+    constructor() {
+        this.L = fengari.lauxlib.luaL_newstate();
+        fengari.lualib.luaL_openlibs(this.L);
+        this.ok = true;
+    }
+    loadScript(scriptText) {
+        // Versuche das Skript zu laden
+        const status = fengari.lauxlib.luaL_dostring(this.L, fengari.to_luastring(scriptText));
+        if (status !== fengari.lua.LUA_OK) {
+            const errMsg = fengari.lua.lua_tojsstring(this.L, -1);
+            console.error("Lua Error:", errMsg);
+            this.ok = false;
+            fengari.lua.lua_pop(this.L, 1); // Fehler vom Stack nehmen
+        } else {
+            this.ok = true;
+        }
+    }
+    callOpacityFunc(x, y, time, pressure) {
+        if (!this.ok) return 1.0;
+        // Funktion auf den Stack holen
+        fengari.lua.lua_getglobal(this.L, fengari.to_luastring("calculateOpacity"));
+        if (!fengari.lua.lua_isfunction(this.L, -1)) {
+            fengari.lua.lua_pop(this.L, 1); return 1.0; // Keine Funktion gefunden
+        }
+        // Argumente pushen
+        fengari.lua.lua_pushnumber(this.L, x);
+        fengari.lua.lua_pushnumber(this.L, y);
+        fengari.lua.lua_pushnumber(this.L, time);
+        fengari.lua.lua_pushnumber(this.L, pressure);
+        // Aufrufen (4 Argumente, 1 Rückgabewert)
+        if (fengari.lua.lua_pcall(this.L, 4, 1, 0) !== fengari.lua.LUA_OK) {
+             console.error("Lua Runtime Error:", fengari.lua.lua_tojsstring(this.L, -1));
+             fengari.lua.lua_pop(this.L, 1); return 1.0;
+        }
+        // Ergebnis holen
+        const result = fengari.lua.lua_tonumber(this.L, -1);
+        fengari.lua.lua_pop(this.L, 1);
+        return Math.max(0, Math.min(1, result || 0)); // Clamp 0-1
+    }
+}
+
+// --- Painter Engine Handles Brushes ---
+class Painter {
+    constructor(app) {
+        this.app = app;
+        this.isDrawing = false;
+        this.lastPos = null;
+        this.settings = { size: 50, opacity: 1.0, color: '#ff0000', value: 255, engine: 'standard' };
+        this.luaHost = new LuaHost();
+        this.noisePattern = this.generateNoisePattern();
+        this.startTime = Date.now();
+
+        this.setupEventListeners();
+        this.updateLuaScript(); // Initiales Skript laden
+    }
+
+    generateNoisePattern() {
+        const c = document.createElement('canvas');
+        c.width = 64; c.height = 64;
+        const ctx = c.getContext('2d');
+        const imgData = ctx.createImageData(64,64);
+        for(let i=0; i<imgData.data.length; i+=4) {
+            const val = Math.random() * 255;
+            imgData.data[i] = val; imgData.data[i+1] = val; imgData.data[i+2] = val; imgData.data[i+3] = 255;
+        }
+        ctx.putImageData(imgData, 0,0);
+        return c;
+    }
+
+    updateLuaScript() {
+        this.luaHost.loadScript(document.getElementById('lua-code-area').value);
+    }
+
+    setupEventListeners() {
+        const cvs = this.app.ui.paintCanvas;
+        cvs.addEventListener('mousedown', (e) => {
+            this.isDrawing = true;
+            this.lastPos = this.getPos(e);
+            this.draw(this.lastPos, true); // Is Click
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!this.isDrawing || e.target !== cvs) return;
+            const currentPos = this.getPos(e);
+            this.draw(currentPos, false);
+            this.lastPos = currentPos;
+        });
+        window.addEventListener('mouseup', () => this.isDrawing = false);
+
+        // Controls Inputs
+        document.getElementById('brush-size').addEventListener('input', (e) => { this.settings.size = parseInt(e.target.value); document.getElementById('val-size').innerText = this.settings.size; });
+        document.getElementById('brush-opacity').addEventListener('input', (e) => { this.settings.opacity = parseInt(e.target.value) / 100; document.getElementById('val-opacity').innerText = parseInt(e.target.value); });
+        document.getElementById('brush-color').addEventListener('input', (e) => this.settings.color = e.target.value);
+        document.getElementById('brush-value').addEventListener('input', (e) => { this.settings.value = parseInt(e.target.value); document.getElementById('val-gray').innerText = (this.settings.value/255).toFixed(2); });
+        
+        // Engine Switcher & Lua Editor Visibility
+        document.getElementById('brush-engine').addEventListener('change', (e) => {
+            this.settings.engine = e.target.value;
+            document.getElementById('lua-editor-container').classList.toggle('hidden', this.settings.engine !== 'lua');
+        });
+        document.getElementById('lua-code-area').addEventListener('input', () => this.updateLuaScript());
+    }
+
+    getPos(e) {
+        const rect = this.app.ui.paintCanvas.getBoundingClientRect();
+        return {
+            x: (e.clientX - rect.left) * (this.app.width / rect.width),
+            y: (e.clientY - rect.top) * (this.app.height / rect.height)
+        };
+    }
+
+    getBrushColor(opacityOverride = null) {
+        const channel = this.app.channels[this.app.currentChannel];
+        const opacity = opacityOverride !== null ? opacityOverride : this.settings.opacity;
+        if (channel.isColor) {
+            return { fill: this.settings.color, opacity: opacity };
+        } else {
+            const v = this.settings.value;
+            return { fill: `rgb(${v},${v},${v})`, opacity: opacity };
+        }
+    }
+
+    draw(currentPos, isClick) {
+        const ctx = this.app.channels[this.app.currentChannel].ctx;
+        ctx.lineJoin = ctx.lineCap = 'round';
+        const { fill, opacity } = this.getBrushColor();
+        const size = this.settings.size;
+
+        if (this.settings.engine === 'standard') {
+            // Standard Smooth Line
+            ctx.globalAlpha = opacity;
+            ctx.strokeStyle = fill;
+            ctx.fillStyle = fill;
+            ctx.lineWidth = size;
+            ctx.beginPath();
+            if (isClick) { ctx.moveTo(currentPos.x, currentPos.y); ctx.lineTo(currentPos.x+0.1, currentPos.y); } 
+            else { ctx.moveTo(this.lastPos.x, this.lastPos.y); ctx.lineTo(currentPos.x, currentPos.y); }
+            ctx.stroke();
+
+        } else if (this.settings.engine === 'noise' || this.settings.engine === 'lua') {
+            // Stamper Engines (Noise & Lua)
+            const dist = isClick ? 0 : Math.sqrt(Math.pow(currentPos.x - this.lastPos.x, 2) + Math.pow(currentPos.y - this.lastPos.y, 2));
+            const stepSize = Math.max(1, size * 0.2); // Dichte der Stempel
+            const steps = isClick ? 1 : Math.ceil(dist / stepSize);
+            
+            for (let i = 0; i < steps; i++) {
+                const t = steps === 1 ? 1 : i / (steps-1);
+                const x = isClick ? currentPos.x : this.lastPos.x + (currentPos.x - this.lastPos.x) * t;
+                const y = isClick ? currentPos.y : this.lastPos.y + (currentPos.y - this.lastPos.y) * t;
+
+                let currentOpacity = opacity;
+
+                if (this.settings.engine === 'noise') {
+                    // Noise Pattern Brush
+                    ctx.globalAlpha = opacity;
+                    const pattern = ctx.createPattern(this.noisePattern, 'repeat');
+                    ctx.fillStyle = pattern;
+                    // Trick: um das Pattern zu färben, nutzen wir globalCompositeOperation
+                    // Das ist komplex in einem Canvas, vereinfachen wir es: Wir zeichnen das Pattern direkt.
+                    // Für Graustufen-Kanäle funktioniert das gut, für Farbe ist es ein "Textur-Pinsel".
+                } 
+                else if (this.settings.engine === 'lua') {
+                    // Lua Script Brush
+                    const time = (Date.now() - this.startTime) / 1000;
+                    const luaOpac = this.luaHost.callOpacityFunc(x, y, time, 1.0);
+                    currentOpacity = opacity * luaOpac;
+                    ctx.fillStyle = fill;
+                    ctx.globalAlpha = currentOpacity;
+                }
+
+                // Draw the stamp dot
+                ctx.beginPath();
+                ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        this.app.updateEditorCanvas();
+    }
+
+    clearLayer() {
+        this.app.channels[this.app.currentChannel].ctx.clearRect(0,0,this.app.width, this.app.height);
+        this.app.updateEditorCanvas();
+    }
+    fillLayer() {
+        const ctx = this.app.channels[this.app.currentChannel].ctx;
+        const { fill, opacity } = this.getBrushColor(1.0);
+        ctx.globalAlpha = 1.0; ctx.fillStyle = fill;
+        ctx.fillRect(0,0,this.app.width, this.app.height);
+        this.app.updateEditorCanvas();
+    }
+}
+
+// --- Main Application Class ---
+class App {
+    constructor() {
+        // Die Initialisierung passiert erst nach dem Setup-Modal
+        this.width = 1024; this.height = 1024;
+        this.channels = {}; this.currentChannel = 'albedo';
+        this.ui = { paintCanvas: document.getElementById('paintCanvas'), ctx: document.getElementById('paintCanvas').getContext('2d') };
+        this.three = { scene: null, camera: null, renderer: null, mesh: null, material: null };
+        this.painter = null;
+
+        this.initUIListeners();
+        
+        // Start Event Listener
+        document.getElementById('startBtn').addEventListener('click', () => {
+            const w = parseInt(document.getElementById('setup-width').value);
+            const h = parseInt(document.getElementById('setup-height').value);
+            if(w > 0 && h > 0) this.initProject(w, h);
+        });
+    }
+
+    initProject(w, h) {
+        this.width = w; this.height = h;
+        document.getElementById('setupModal').classList.add('hidden');
+        
+        // Resize Main Canvas
+        this.ui.paintCanvas.width = this.width;
+        this.ui.paintCanvas.height = this.height;
+
+        // Init Channels
+        this.channels = {
+            albedo: this.createCanvas(true, '#ffffff'),
+            roughness: this.createCanvas(false, '#808080'),
+            metalness: this.createCanvas(false, '#000000'),
+            ao: this.createCanvas(false, '#ffffff'),
+            height: this.createCanvas(false, '#000000')
+        };
+
+        this.painter = new Painter(this);
+        this.initThreeJS();
+        this.setChannel('albedo'); // Start Channel trigger UI update
+    }
+
+    createCanvas(isColor, defaultColor) {
+        const c = document.createElement('canvas');
+        c.width = this.width; c.height = this.height;
+        const ctx = c.getContext('2d', {willReadFrequently: true});
+        ctx.fillStyle = defaultColor; ctx.fillRect(0,0,this.width, this.height);
+        return { el: c, ctx: ctx, isColor: isColor };
+    }
+
+    initUIListeners() {
+        // Navigation & Theme (wie vorher)
+        document.getElementById('burgerBtn').addEventListener('click', () => document.getElementById('drawer').classList.toggle('open'));
+        document.getElementById('main').addEventListener('click', () => document.getElementById('drawer').classList.remove('open'));
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                item.classList.add('active'); document.getElementById('drawer').classList.remove('open');
+                document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+                const target = document.getElementById(item.getAttribute('data-target'));
+                target.classList.add('active');
+                if (target.id === 'view-3d') this.update3DTextures();
+            });
+        });
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            const body = document.body; body.setAttribute('data-theme', body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+            document.getElementById('icon-sun').classList.toggle('hidden'); document.getElementById('icon-moon').classList.toggle('hidden');
+        });
+
+        // Image Import Logic
+        document.getElementById('img-import-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const ctx = this.channels[this.currentChannel].ctx;
+                    // Bild auf Leinwandgröße skalieren und zeichnen
+                    ctx.globalAlpha = 1.0;
+                    // Optional: aspect ratio beibehalten oder strecken? Hier: strecken um zu füllen.
+                    ctx.drawImage(img, 0, 0, this.width, this.height);
+                    this.updateEditorCanvas();
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+            e.target.value = ''; // Reset input
+        });
+
+        // 3D Controls
+        document.getElementById('disp-scale').addEventListener('input', (e) => { if(this.three.material) this.three.material.displacementScale = parseFloat(e.target.value); });
+        document.getElementById('light-int').addEventListener('input', (e) => { if(this.three.scene) this.three.scene.children.forEach(c => { if(c.isPointLight) c.intensity = parseFloat(e.target.value); }); });
+        document.getElementById('mesh-res').addEventListener('change', (e) => this.updateGeometry(parseInt(e.target.value)));
+    }
+
+    setChannel(name) {
+        this.currentChannel = name;
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        const chips = document.querySelectorAll('.chip');
+        const chipMap = { 'albedo': 0, 'roughness': 1, 'metalness': 2, 'ao': 3, 'height': 4 };
+        chips[chipMap[name]].classList.add('active');
+        const isColor = this.channels[name].isColor;
+        document.getElementById('color-control-group').style.display = isColor ? 'block' : 'none';
+        document.getElementById('value-control-group').style.display = isColor ? 'none' : 'block';
+        this.updateEditorCanvas();
+    }
+
+    updateEditorCanvas() {
+        if(!this.channels[this.currentChannel]) return;
+        this.ui.ctx.clearRect(0,0,this.width, this.height);
+        this.ui.ctx.drawImage(this.channels[this.currentChannel].el, 0, 0);
+    }
+
+    // --- Three.js ---
+    initThreeJS() {
+        const container = document.getElementById('three-canvas');
+        this.three.scene = new THREE.Scene();
+        this.three.camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        this.three.camera.position.z = 3.5;
+        this.three.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.three.renderer.setSize(container.clientWidth, container.clientHeight);
+        this.three.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.three.renderer.outputEncoding = THREE.sRGBEncoding;
+        container.appendChild(this.three.renderer.domElement);
+        this.three.scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+        const p1 = new THREE.PointLight(0xffffff, 1); p1.position.set(5, 5, 5); this.three.scene.add(p1);
+        const p2 = new THREE.PointLight(0xff9966, 0.8); p2.position.set(-5, -2, 5); this.three.scene.add(p2);
+        this.three.material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.5, displacementScale: 0.2 });
+        this.updateGeometry(256);
+        const animate = () => { requestAnimationFrame(animate); if (this.three.mesh) { this.three.mesh.rotation.y += 0.002; } this.three.renderer.render(this.three.scene, this.three.camera); };
+        animate();
+        window.addEventListener('resize', () => {
+            this.three.camera.aspect = container.clientWidth / container.clientHeight;
+            this.three.camera.updateProjectionMatrix();
+            this.three.renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+    }
+
+    updateGeometry(segments) {
+        if(this.three.mesh) this.three.scene.remove(this.three.mesh);
+        const geo = new THREE.SphereGeometry(1, segments, segments);
+        geo.attributes.uv2 = geo.attributes.uv; 
+        this.three.mesh = new THREE.Mesh(geo, this.three.material);
+        this.three.scene.add(this.three.mesh);
+    }
+
+    generateNormalMap(heightCanvas) {
+        const w = this.width, h = this.height;
+        const ctx = heightCanvas.getContext('2d');
+        const data = ctx.getImageData(0, 0, w, h).data;
+        const normalData = new Uint8ClampedArray(w * h * 4);
+        const getVal = (x, y) => data[((y + h) % h * w + (x + w) % w) * 4] / 255.0;
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const dX = (getVal(x+1, y-1)+2*getVal(x+1, y)+getVal(x+1, y+1)) - (getVal(x-1, y-1)+2*getVal(x-1, y)+getVal(x-1, y+1));
+                const dY = (getVal(x-1, y+1)+2*getVal(x, y+1)+getVal(x+1, y+1)) - (getVal(x-1, y-1)+2*getVal(x, y-1)+getVal(x+1, y-1));
+                const dZ = 1.0 / 2.0; // Strength
+                const len = Math.sqrt(dX*dX + dY*dY + dZ*dZ);
+                const idx = (y * w + x) * 4;
+                normalData[idx] = (dX/len*0.5+0.5)*255; normalData[idx+1] = (dY/len*0.5+0.5)*255; normalData[idx+2] = (dZ/len*0.5+0.5)*255; normalData[idx+3] = 255;
+            }
+        }
+        const nc = document.createElement('canvas'); nc.width = w; nc.height = h; nc.getContext('2d').putImageData(new ImageData(normalData, w, h), 0, 0); return nc;
+    }
+
+    update3DTextures() {
+        const createTex = (c) => { const t = new THREE.CanvasTexture(c); t.flipY = false; t.encoding = THREE.sRGBEncoding; return t; };
+        this.three.material.map = createTex(this.channels.albedo.el);
+        this.three.material.roughnessMap = createTex(this.channels.roughness.el);
+        this.three.material.metalnessMap = createTex(this.channels.metalness.el);
+        this.three.material.aoMap = createTex(this.channels.ao.el);
+        this.three.material.displacementMap = createTex(this.channels.height.el);
+        this.three.material.normalMap = createTex(this.generateNormalMap(this.channels.height.el));
+        this.three.material.needsUpdate = true;
+    }
+}
+
+const app = new App();
+</script>
+</body>
+                      </html>
