@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS Raytracer Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0f0f0f; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; cursor: move; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        
+        .slider-input {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: #374151;
+            border-radius: 2px;
+            outline: none;
+        }
+        .slider-input::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform .1s;
+        }
+        .slider-input::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        /* Loading Overlay */
+        #loader {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            z-index: 50;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid #3b82f6;
+            border-top: 4px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas"></canvas>
+
+    <!-- Loading Overlay für Final Render -->
+    <div id="loader">
+        <div class="spinner"></div>
+        <div class="text-xl font-bold">Rendere hohes Detail...</div>
+        <div class="text-sm text-gray-400 mt-2">Bitte warten (Single Thread JS)</div>
+    </div>
+
+    <!-- UI Panel -->
+    <div id="ui-panel" class="absolute top-4 left-4 w-80 bg-gray-900/95 backdrop-blur-md text-gray-200 rounded-xl shadow-2xl border border-gray-700/50 transition-all duration-300 max-h-[90vh] overflow-y-auto flex flex-col">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-center p-4 border-b border-gray-700 cursor-pointer bg-gray-800/50 hover:bg-gray-800 transition" onclick="toggleMenu()">
+            <div>
+                <h1 class="font-bold text-lg text-blue-400">Raytracer Pro</h1>
+                <p class="text-[10px] text-gray-400">Drag Canvas to Rotate • Scroll to Zoom</p>
+            </div>
+            <button id="toggle-btn" class="text-gray-400 hover:text-white transform transition-transform">▼</button>
+        </div>
+
+        <!-- Controls -->
+        <div id="controls-content" class="p-4 space-y-6">
+            
+            <!-- Performance Settings -->
+            <div class="space-y-3 bg-gray-800/30 p-3 rounded-lg border border-gray-700/30">
+                <h2 class="text-xs font-bold text-blue-300 uppercase tracking-wider">Vorschau & Kamera</h2>
+                
+                <div class="grid grid-cols-[auto_1fr_auto] gap-2 items-center text-xs">
+                    <label>Res Scale</label>
+                    <input type="range" class="slider-input" min="0.1" max="1.0" step="0.05" value="0.4" id="preview-scale">
+                    <span class="w-8 text-right font-mono" id="val-scale">0.4</span>
+                </div>
+                <div class="text-[10px] text-gray-500 leading-tight">
+                    Niedrige Scale = Schneller. Hohe Scale = Schärfer.
+                </div>
+            </div>
+
+            <!-- Final Render Settings -->
+            <div class="space-y-3 bg-gray-800/30 p-3 rounded-lg border border-gray-700/30">
+                <h2 class="text-xs font-bold text-green-400 uppercase tracking-wider">Finaler Export</h2>
+                <div class="flex gap-2">
+                    <input type="number" id="render-w" value="1280" class="w-1/2 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-center" placeholder="Breite">
+                    <input type="number" id="render-h" value="720" class="w-1/2 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-center" placeholder="Höhe">
+                </div>
+                <button onclick="startFinalRender()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-2 rounded text-xs transition shadow-lg shadow-green-900/20">
+                    BILD BERECHNEN & SPEICHERN
+                </button>
+            </div>
+
+            <!-- Objects -->
+            <div id="object-controls" class="space-y-6">
+                <!-- Wird per JS gefüllt -->
+            </div>
+
+        </div>
+    </div>
+
+<script>
+/**
+ * ------------------------------------------------------------------
+ * VECTOR MATH
+ * ------------------------------------------------------------------
+ */
+class Vec3 {
+    constructor(x, y, z) { this.x = x; this.y = y; this.z = z; }
+    add(v) { return new Vec3(this.x + v.x, this.y + v.y, this.z + v.z); }
+    sub(v) { return new Vec3(this.x - v.x, this.y - v.y, this.z - v.z); }
+    mul(s) { return new Vec3(this.x * s, this.y * s, this.z * s); }
+    dot(v) { return this.x * v.x + this.y * v.y + this.z * v.z; }
+    cross(v) { return new Vec3(this.y * v.z - this.z * v.y, this.z * v.x - this.x * v.z, this.x * v.y - this.y * v.x); }
+    mag() { return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z); }
+    norm() { 
+        let m = this.mag(); 
+        return m === 0 ? new Vec3(0,0,0) : new Vec3(this.x / m, this.y / m, this.z / m); 
+    }
+}
+
+/**
+ * ------------------------------------------------------------------
+ * SZENE & STATE
+ * ------------------------------------------------------------------
+ */
+const spheres = [
+    { name: "Kugel Links", center: new Vec3(-1.8, 1.0, 0), radius: 1.0, color: new Vec3(0.9, 0.1, 0.1), reflectivity: 0.4 }, 
+    { name: "Kugel Rechts", center: new Vec3(1.8, 1.0, 0), radius: 1.0, color: new Vec3(0.1, 0.5, 0.9), reflectivity: 0.4 }
+];
+
+const lightDir = new Vec3(0.5, 1.5, -1).norm();
+
+// Kamera State (Orbit)
+let camState = {
+    radius: 8,
+    theta: 0.3, // Höhenwinkel
+    phi: 1.57,  // Azimut
+    target: new Vec3(0, 0.5, 0)
+};
+
+let isDragging = false;
+let lastMouseX = 0, lastMouseY = 0;
+let renderTimeout;
+let previewScale = 0.4;
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+/**
+ * ------------------------------------------------------------------
+ * RAYTRACING ENGINE
+ * ------------------------------------------------------------------
+ */
+
+function intersectSphere(origin, dir, sphere) {
+    const oc = origin.sub(sphere.center);
+    const a = dir.dot(dir);
+    const b = 2.0 * oc.dot(dir);
+    const c = oc.dot(oc) - sphere.radius * sphere.radius;
+    const discriminant = b * b - 4 * a * c;
+    if (discriminant < 0) return -1;
+    return (-b - Math.sqrt(discriminant)) / (2.0 * a);
+}
+
+function getSkyColor(dir) {
+    const t = 0.5 * (dir.y + 1.0);
+    let sky = new Vec3(1.0, 1.0, 1.0).mul(1.0 - t).add(new Vec3(0.5, 0.7, 1.0).mul(t));
+    const sunIntensity = Math.max(0, dir.dot(lightDir));
+    if (sunIntensity > 0.995) {
+        sky = sky.add(new Vec3(1, 0.9, 0.6).mul(Math.pow(sunIntensity, 200) * 20)); // Sun Disk
+    }
+    return sky;
+}
+
+function getFloorColor(p) {
+    const size = 1.5;
+    // Offset, um Artefakte bei 0 zu vermeiden
+    const tx = Math.floor((p.x + 1000) / size);
+    const tz = Math.floor((p.z + 1000) / size);
+    const check = (tx + tz) % 2 === 0;
+    return check ? new Vec3(0.8, 0.8, 0.8) : new Vec3(0.15, 0.15, 0.15);
+}
+
+function trace(origin, dir, depth) {
+    if (depth > 3) return new Vec3(0,0,0);
+
+    let closestT = Infinity;
+    let closestObj = null;
+    let type = 'none';
+
+    // Spheres
+    for (let s of spheres) {
+        const t = intersectSphere(origin, dir, s);
+        if (t > 0.001 && t < closestT) {
+            closestT = t;
+            closestObj = s;
+            type = 'sphere';
+        }
+    }
+
+    // Plane (y=0)
+    if (dir.y < 0) {
+        const tPlane = -origin.y / dir.y;
+        if (tPlane > 0.001 && tPlane < closestT) {
+            closestT = tPlane;
+            type = 'plane';
+        }
+    }
+
+    if (closestT === Infinity) return getSkyColor(dir);
+
+    const hitPos = origin.add(dir.mul(closestT));
+    let normal, color, reflectivity;
+
+    if (type === 'sphere') {
+        normal = hitPos.sub(closestObj.center).norm();
+        color = closestObj.color;
+        reflectivity = closestObj.reflectivity;
+    } else {
+        normal = new Vec3(0, 1, 0);
+        color = getFloorColor(hitPos);
+        reflectivity = 0.2; // Boden spiegelt leicht
+    }
+
+    // Lighting
+    let diffuse = Math.max(0, normal.dot(lightDir));
+    
+    // Soft Shadows (simple)
+    const shadowOrigin = hitPos.add(normal.mul(0.001));
+    let inShadow = false;
+    for (let s of spheres) {
+        if (intersectSphere(shadowOrigin, lightDir, s) > 0.001) {
+            inShadow = true;
+            break;
+        }
+    }
+    if (inShadow) diffuse *= 0.1;
+
+    let finalColor = color.mul(diffuse + 0.15); // 0.15 Ambient
+
+    // Reflection
+    if (reflectivity > 0) {
+        const reflectDir = dir.sub(normal.mul(2 * dir.dot(normal))).norm();
+        const reflectedColor = trace(hitPos.add(normal.mul(0.001)), reflectDir, depth + 1);
+        finalColor = finalColor.mul(1 - reflectivity).add(reflectedColor.mul(reflectivity));
+    }
+
+    return finalColor;
+}
+
+/**
+ * ------------------------------------------------------------------
+ * RENDER LOOP
+ * ------------------------------------------------------------------
+ */
+
+// Berechnet Kamera Position und Basis-Vektoren
+function getCameraBasis() {
+    // Spherical to Cartesian
+    const cx = camState.radius * Math.sin(camState.theta) * Math.cos(camState.phi);
+    const cy = camState.radius * Math.cos(camState.theta);
+    const cz = camState.radius * Math.sin(camState.theta) * Math.sin(camState.phi);
+    const camPos = new Vec3(cx, cy, cz).add(camState.target);
+
+    // LookAt Logic
+    const forward = camState.target.sub(camPos).norm();
+    const up = new Vec3(0, 1, 0);
+    const right = forward.cross(up).norm();
+    const upCorrected = right.cross(forward).norm();
+
+    return { pos: camPos, fwd: forward, right: right, up: upCorrected };
+}
+
+function renderScene(width, height) {
+    canvas.width = width;
+    canvas.height = height;
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    
+    const aspectRatio = width / height;
+    const cam = getCameraBasis();
+
+    // Iteration durch Pixel
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            
+            // Normalized Coordinates (-1 to 1)
+            // Umdrehen von Y für mathematisch korrektes System
+            const u = (x / width) * 2 - 1;
+            const v = -((y / height) * 2 - 1); 
+
+            // Ray Direction Konstruktion
+            // Ray = Forward * FocalLength + Right * u * aspect + Up * v
+            const focalLength = 1.5;
+            const uv = cam.right.mul(u * aspectRatio).add(cam.up.mul(v));
+            const dir = cam.fwd.mul(focalLength).add(uv).norm();
+
+            const col = trace(cam.pos, dir, 0);
+
+            const idx = (y * width + x) * 4;
+            // Simple Gamma 2.2 approx (sqrt)
+            data[idx] = Math.min(255, Math.sqrt(col.x) * 255);
+            data[idx+1] = Math.min(255, Math.sqrt(col.y) * 255);
+            data[idx+2] = Math.min(255, Math.sqrt(col.z) * 255);
+            data[idx+3] = 255;
+        }
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
+function requestPreviewRender() {
+    if(renderTimeout) clearTimeout(renderTimeout);
+    
+    // Sofort rendern mit niedrigerer Qualität wenn interagiert wird
+    const w = Math.floor(window.innerWidth * (isDragging ? 0.15 : previewScale));
+    const h = Math.floor(window.innerHeight * (isDragging ? 0.15 : previewScale));
+    renderScene(w, h);
+}
+
+function startFinalRender() {
+    const w = parseInt(document.getElementById('render-w').value) || 1280;
+    const h = parseInt(document.getElementById('render-h').value) || 720;
+    
+    const loader = document.getElementById('loader');
+    loader.style.display = 'flex';
+
+    // Timeout damit der Browser das UI (Loader) zeichnen kann, bevor er blockiert
+    setTimeout(() => {
+        renderScene(w, h);
+        
+        // Download anbieten
+        const link = document.createElement('a');
+        link.download = `raytrace_${w}x${h}.png`;
+        link.href = canvas.toDataURL();
+        link.click();
+
+        loader.style.display = 'none';
+        
+        // Zurück zur Preview
+        requestPreviewRender();
+    }, 100);
+}
+
+
+/**
+ * ------------------------------------------------------------------
+ * INPUT & INTERACTION
+ * ------------------------------------------------------------------
+ */
+
+// Kamera Orbit
+canvas.addEventListener('mousedown', e => {
+    isDragging = true;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+});
+
+window.addEventListener('mouseup', () => {
+    if(isDragging) {
+        isDragging = false;
+        requestPreviewRender(); // High res preview on release
+    }
+});
+
+window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    
+    const dx = e.clientX - lastMouseX;
+    const dy = e.clientY - lastMouseY;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+
+    camState.phi += dx * 0.01;
+    camState.theta += dy * 0.01;
+
+    // Clamp Theta (nicht über Kopf drehen)
+    if (camState.theta < 0.1) camState.theta = 0.1;
+    if (camState.theta > Math.PI / 2 - 0.1) camState.theta = Math.PI / 2 - 0.1;
+
+    requestPreviewRender();
+});
+
+// Zoom
+canvas.addEventListener('wheel', e => {
+    camState.radius += e.deltaY * 0.01;
+    if (camState.radius < 2) camState.radius = 2;
+    if (camState.radius > 30) camState.radius = 30;
+    requestPreviewRender();
+});
+
+
+// Preview Scale Slider
+const scaleSlider = document.getElementById('preview-scale');
+scaleSlider.addEventListener('input', e => {
+    previewScale = parseFloat(e.target.value);
+    document.getElementById('val-scale').textContent = previewScale;
+    requestPreviewRender();
+});
+
+// Objektdaten Generierung (UI)
+function generateObjectUI() {
+    const container = document.getElementById('object-controls');
+    
+    spheres.forEach((s, i) => {
+        const div = document.createElement('div');
+        div.className = 'space-y-2 border-t border-gray-800 pt-4';
+        
+        // Hex Konvertierung für Input
+        const r = Math.floor(s.color.x * 255).toString(16).padStart(2,'0');
+        const g = Math.floor(s.color.y * 255).toString(16).padStart(2,'0');
+        const b = Math.floor(s.color.z * 255).toString(16).padStart(2,'0');
+        const hex = `#${r}${g}${b}`;
+
+        div.innerHTML = `
+            <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">${s.name}</h2>
+            <div class="grid grid-cols-[auto_1fr_auto] gap-2 items-center text-xs">
+                <label>X</label>
+                <input type="range" class="slider-input" min="-5" max="5" step="0.1" value="${s.center.x}" data-idx="${i}" data-prop="x">
+                <span id="disp-${i}-x" class="w-6 text-right font-mono">${s.center.x}</span>
+
+                <label>Z</label>
+                <input type="range" class="slider-input" min="-5" max="5" step="0.1" value="${s.center.z}" data-idx="${i}" data-prop="z">
+                <span id="disp-${i}-z" class="w-6 text-right font-mono">${s.center.z}</span>
+
+                <label>Refl</label>
+                <input type="range" class="slider-input" min="0" max="1" step="0.05" value="${s.reflectivity}" data-idx="${i}" data-prop="refl">
+                <span id="disp-${i}-refl" class="w-6 text-right font-mono">${s.reflectivity}</span>
+
+                <label>Col</label>
+                <input type="color" class="w-full h-5 bg-transparent border-0 cursor-pointer" value="${hex}" data-idx="${i}" data-prop="col">
+                <span></span>
+            </div>
+        `;
+        container.appendChild(div);
+    });
+
+    // Listener für generierte Inputs
+    container.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('input', (e) => {
+            const idx = e.target.getAttribute('data-idx');
+            const prop = e.target.getAttribute('data-prop');
+            const val = e.target.value;
+
+            if (prop === 'x') { spheres[idx].center.x = parseFloat(val); document.getElementById(`disp-${idx}-x`).innerText = val; }
+            if (prop === 'z') { spheres[idx].center.z = parseFloat(val); document.getElementById(`disp-${idx}-z`).innerText = val; }
+            if (prop === 'refl') { spheres[idx].reflectivity = parseFloat(val); document.getElementById(`disp-${idx}-refl`).innerText = val; }
+            if (prop === 'col') {
+                const r = parseInt(val.substr(1,2), 16) / 255;
+                const g = parseInt(val.substr(3,2), 16) / 255;
+                const b = parseInt(val.substr(5,2), 16) / 255;
+                spheres[idx].color = new Vec3(r, g, b);
+            }
+            requestPreviewRender();
+        });
+    });
+}
+
+function toggleMenu() {
+    const content = document.getElementById('controls-content');
+    const btn = document.getElementById('toggle-btn');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        btn.style.transform = 'rotate(0deg)';
+    } else {
+        content.style.display = 'none';
+        btn.style.transform = 'rotate(-90deg)';
+    }
+}
+
+window.addEventListener('resize', () => {
+    requestPreviewRender();
+});
+
+// Init
+generateObjectUI();
+requestPreviewRender();
+
+</script>
+</body>
+  </html>
