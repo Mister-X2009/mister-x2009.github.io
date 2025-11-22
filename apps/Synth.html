@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="de">
 <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Grafisch ansprechender Synthesizer — Single File</title>
@@ -26,7 +27,10 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#071025 0%, #08
 .val{font-size:13px;font-weight:600}
 .piano-area{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:14px;padding:18px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:12px}
 .keys{display:flex;position:relative;user-select:none}
-.key{position:relative;border-radius:6px;margin:0 3px;box-shadow:0 6px 20px rgba(2,6,23,0.6);flex:0 0 44px;height:170px;background:linear-gradient(180deg,#fff,#e6eaf3);border:1px solid rgba(0,0,0,0.08);display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;font-weight:600;color:#07122a}
+.key {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;position:relative;border-radius:6px;margin:0 3px;box-shadow:0 6px 20px rgba(2,6,23,0.6);flex:0 0 44px;height:170px;background:linear-gradient(180deg,#fff,#e6eaf3);border:1px solid rgba(0,0,0,0.08);display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;font-weight:600;color:#07122a}
 .key.black{background:linear-gradient(180deg,#0b1220,#081025);color:#e6eef6;width:30px;height:110px;margin-left:-12px;margin-right:-12px;z-index:2;box-shadow:0 12px 30px rgba(2,6,23,0.7)}
 .key.active{transform:translateY(6px);box-shadow:0 4px 6px rgba(0,0,0,0.4) inset}
 .kbd-note{font-size:11px;color:rgba(255,255,255,0.7)}
@@ -48,7 +52,7 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#071025 0%, #08
 @media (max-width:980px){.app{grid-template-columns:1fr;grid-auto-rows:auto;padding:12px}.sidebar{order:2}.right-panel{order:1}}
 </style>
 </head>
-<body>
+<body style="touch-action: manipulation; -webkit-touch-callout: none; -webkit-text-size-adjust: 100%;">
 <div class="app">
   <div class="sidebar">
     <div class="header">
@@ -148,7 +152,12 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#071025 0%, #08
       </div>
     </div>
 
-    <div class="footer-note">Tipp: Benutze Maus oder Touch auf den Tasten. Computer-Keyboard mappings: A..K bzw. W E T Y U O P für schwarze Tasten.</div>
+    <div class="control big">
+        <div class="label">MIDI Input</div>
+        <select id="midiInput" class="select"></select>
+      </div>
+
+      <div class="footer-note">Tipp: Benutze Maus oder Touch auf den Tasten. Computer-Keyboard mappings: A..K bzw. W E T Y U O P für schwarze Tasten.</div>
   </div>
 
   <div class="right-panel">
@@ -454,8 +463,133 @@ function connectNodes(){ /* if needed for more complex chaining */ }
 // small helpers for UI values
 (function init(){ document.getElementById('actxState').textContent = ctx.state; document.getElementById('polyVal').textContent = polyphony; document.getElementById('resVal').textContent = '0.80'; document.getElementById('masterDb').textContent = document.getElementById('gain').value + ' dB'; document.getElementById('oscA').textContent='On'; document.getElementById('oscB').textContent='On'; })();
 
-// MIDI support optional (basic)
-if(navigator.requestMIDIAccess){ navigator.requestMIDIAccess().then(m=>{ m.inputs.forEach(inp=>{ inp.onmidimessage = (ev)=>{ const [cmd,note,velo]=ev.data; if(cmd===144 && velo>0) noteOn(note, velo/127); if((cmd===128) || (cmd===144 && velo===0)) noteOff(note); }; }); }); }
+// MIDI support with device selection + extended controls
+let selectedMidiInput = null;
+const midiSelect = document.getElementById('midiInput');
+let midiLearnTarget = null;
+const midiCCMap = {}; // CC → parameter callback
+
+function applyCC(cc, value) {
+  if (midiCCMap[cc]) midiCCMap[cc](value / 127);
+}
+
+// Activate MIDI Learn on right-click of any knob/slider
+function enableMidiLearnFor(selector, callback) {
+  document.querySelector(selector).addEventListener('contextmenu', e => {
+    e.preventDefault();
+    midiLearnTarget = { selector, callback };
+  });
+}
+
+// Example bindings (extend if needed)
+enableMidiLearnFor('#attack', v => setAttack(v));
+enableMidiLearnFor('#decay', v => setDecay(v));
+enableMidiLearnFor('#sustain', v => setSustain(v));
+enableMidiLearnFor('#release', v => setRelease(v));
+enableMidiLearnFor('#cutoff', v => setFilterCutoff(v));
+enableMidiLearnFor('#res', v => setFilterRes(v));
+
+enableMidiLearnFor('#lfoRate', v => setLfoRate(v));
+enableMidiLearnFor('#lfoAmount', v => setLfoAmount(v));
+
+enableMidiLearnFor('#detune', v => setDetune(v));
+
+if (navigator.requestMIDIAccess) {
+  navigator.requestMIDIAccess().then(midi => {
+    function populateMidiInputs() {
+      midiSelect.innerHTML = '';
+      midi.inputs.forEach((input, id) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = input.name;
+        midiSelect.appendChild(opt);
+      });
+      if (midiSelect.options.length > 0) {
+        midiSelect.selectedIndex = 0;
+        selectedMidiInput = midi.inputs.get(midiSelect.value);
+        attachMidiHandler(selectedMidiInput);
+      }
+    }
+
+    function attachMidiHandler(input) {
+      if (!input) return;
+      input.onmidimessage = ev => {
+        const [cmd, d1, d2] = ev.data;
+
+        // Note on/off
+        if (cmd === 144 && d2 > 0) noteOn(d1, d2 / 127); // Anschlag
+        if (cmd === 128 || (cmd === 144 && d2 === 0)) noteOff(d1);
+
+        // CC (ModWheel, Sustain, MIDI Learn)
+        if ((cmd & 0xF0) === 176) {
+          const cc = d1;
+          const val = d2;
+
+          // Sustain pedal CC64
+          if (cc === 64) handleSustain(val > 63);
+
+          // ModWheel CC1
+          if (cc === 1) setModWheel(val / 127);
+
+          // MIDI Learn mapping
+          if (midiLearnTarget) {
+            midiCCMap[cc] = midiLearnTarget.callback;
+            midiLearnTarget = null;
+          }
+
+          applyCC(cc, val);
+        }
+
+        // Pitch Bend
+        if ((cmd & 0xF0) === 224) {
+          const bend = ((d2 << 7) + d1 - 8192) / 8192; // -1..1
+          setPitchBend(bend);
+        }
+
+        // Aftertouch mono
+        if (cmd === 208) {
+          const pressure = d1 / 127;
+          setAftertouch(pressure);
+        }
+
+        // Poly Aftertouch
+        if (cmd === 160) {
+          const note = d1;
+          const pressure = d2 / 127;
+          setPolyAftertouch(note, pressure);
+        }
+      };
+    }
+
+    populateMidiInputs();
+
+    midiSelect.addEventListener('change', () => {
+      const id = midiSelect.value;
+      selectedMidiInput = midi.inputs.get(id);
+      attachMidiHandler(selectedMidiInput);
+    });
+  });
+}
+    }
+
+    function attachMidiHandler(input) {
+      if (!input) return;
+      input.onmidimessage = ev => {
+        const [cmd, note, velo] = ev.data;
+        if (cmd === 144 && velo > 0) noteOn(note, velo / 127);
+        if (cmd === 128 || (cmd === 144 && velo === 0)) noteOff(note);
+      };
+    }
+
+    populateMidiInputs();
+
+    midiSelect.addEventListener('change', () => {
+      const id = midiSelect.value;
+      selectedMidiInput = midi.inputs.get(id);
+      attachMidiHandler(selectedMidiInput);
+    });
+  });
+}
 
 </script>
 </body>
