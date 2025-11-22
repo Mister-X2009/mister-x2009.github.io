@@ -1,97 +1,209 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meine Projekte</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My projects</title>
 
-<!-- Grundlegende SEO Meta-Tags -->
-<meta name="description" content="Übersicht meiner Projekte aus Physik, Chemie und Programmierung">
-<meta name="keywords" content="Projekte, Physik, Chemie, GitHub, Apps">
-<meta name="author" content="Ansgar">
+  <!-- Basic SEO Meta Tags -->
+  <meta name="description" content="Übersicht meiner Projekte aus Physik, Chemie und Programmierung" />
+  <meta name="keywords" content="Projekte, Physik, Chemie, GitHub, Apps" />
+  <meta name="author" content="Ansgar" />
 
-<!-- OpenGraph (Social Media Vorschau) -->
-<meta property="og:title" content="Meine Projekte">
-<meta property="og:description" content="Eine Übersicht meiner Projekte aus Physik, Chemie und Programmierung">
-<meta property="og:image" content="">
-<meta property="og:url" content="https://mister-x2009.github.io">
-<meta property="og:type" content="website">
+  <!-- OpenGraph (Social Media Preview) -->
+  <meta property="og:title" content="Meine Projekte" />
+  <meta property="og:description" content="Eine Übersicht meiner Projekte aus Physik, Chemie und Programmierung" />
+  <meta property="og:image" content="" />
+  <meta property="og:url" content="https://mister-x2009.github.io" />
+  <meta property="og:type" content="website" />
 
-<!-- Favicon -->
-<link rel="icon" href="favicon.ico" type="image/x-icon">
+  <!-- Favicon -->
+  <link rel="icon" href="favicon.ico" type="image/x-icon" />
 
-<style>
-body { font-family: Arial, sans-serif; margin: 2rem; background: #f5f5f5; }
-h1 { text-align: center; }
-.search { margin-bottom: 1rem; width: 100%; padding: 0.5rem; font-size: 1rem; }
-.project { background: #fff; padding: 1rem; margin: 1rem 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);}
-.project img { max-width: 150px; display: block; margin-bottom: 0.5rem;}
-.project a { text-decoration: none; color: #007acc; }
-</style>
+  <!-- Vibe Coding Disclaimer -->
+  <!-- This project contains vibe coding elements. The code may prioritize aesthetic or expressive style over strict structure. -->
+
+  <style>
+    :root {
+      --bg: #f5f5f5;
+      --text: #222;
+      --card-bg: #fff;
+      --accent: #007acc;
+      --shadow: rgba(0, 0, 0, 0.1);
+    }
+
+    body.dark {
+      --bg: #121212;
+      --text: #e6e6e6;
+      --card-bg: #1e1e1e;
+      --accent: #4ea3ff;
+      --shadow: rgba(0, 0, 0, 0.6);
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background: var(--bg);
+      color: var(--text);
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .search {
+      margin-bottom: 1rem;
+      width: 100%;
+      padding: 0.6rem 1rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: var(--card-bg);
+      color: var(--text);
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    .theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      padding: 0.5rem 1rem;
+      background: var(--card-bg);
+      border: 1px solid #8882;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 2px 5px var(--shadow);
+      color: var(--text);
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    .project {
+      background: var(--card-bg);
+      padding: 1rem;
+      margin: 1rem 0;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px var(--shadow);
+      transition: background 0.3s ease, color 0.3s ease, transform 0.2s ease;
+    }
+
+    .project:hover {
+      transform: translateY(-3px);
+    }
+
+    .project img {
+      max-width: 150px;
+      display: block;
+      margin-bottom: 0.5rem;
+      border-radius: 6px;
+    }
+
+    .project a {
+      text-decoration: none;
+      color: var(--accent);
+    }
+  </style>
 </head>
 <body>
-<h1>Meine Projekte</h1>
-<input type="text" class="search" placeholder="Suche nach Projekten..." oninput="filterProjects(this.value)">
-<div id="projects"></div>
+  <button class="theme-toggle" onclick="toggleTheme()">🌓</button>
 
-<script>
-const user = 'Mister-X2009';
-const repo = 'mister-x2009.github.io';
-const folder = 'apps';
+  <h1>Meine Projekte</h1>
 
-async function fetchProjects() {
-  const container = document.getElementById('projects');
+  <input
+    type="text"
+    class="search"
+    placeholder="Suche nach Projekten..."
+    oninput="filterProjects(this.value)"
+  />
 
-  async function fetchRecursive(path) {
-    const res = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}`);
-    const files = await res.json();
-    
-    for (let file of files) {
-      if (file.type === 'dir') {
-        await fetchRecursive(file.path);
-      } else if (file.name.endsWith('.html')) {
-        const htmlRes = await fetch(file.download_url);
-        const htmlText = await htmlRes.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(htmlText, 'text/html');
+  <div id="projects"></div>
 
-        const title = doc.querySelector('title')?.innerText || 'Kein Titel';
-        const description = doc.querySelector('meta[name="description"]')?.content || 'Keine Beschreibung';
-        const ogImage = doc.querySelector('meta[property="og:image"]')?.content || '';
+  <script>
+    // Load saved theme
+    if (localStorage.getItem("theme") === "dark") {
+      document.body.classList.add("dark");
+    }
 
-        // GitHub Pages URL für die Unterseite
-        const pageUrl = `https://${user}.github.io/${file.path}`;
+    function toggleTheme() {
+      document.body.classList.toggle("dark");
+      localStorage.setItem(
+        "theme",
+        document.body.classList.contains("dark") ? "dark" : "light"
+      );
+    }
 
-        const div = document.createElement('div');
-        div.className = 'project';
-        div.innerHTML = `
-          ${ogImage ? `<img src="${ogImage}" alt="${title}">` : ''}
-          <a href="${pageUrl}" target="_blank"><h2>${title}</h2></a>
-          <p>${description}</p>
-        `;
-        container.appendChild(div);
+    const user = "Mister-X2009";
+    const repo = "mister-x2009.github.io";
+    const folder = "apps";
 
-        // Optional: Erste Projekt-OG-Tags in Main-Page einfügen
-        if (!document.querySelector('meta[property="og:image"]').content && ogImage) {
-          document.querySelector('meta[property="og:title"]').content = title;
-          document.querySelector('meta[property="og:description"]').content = description;
-          document.querySelector('meta[property="og:image"]').content = ogImage;
+    async function fetchProjects() {
+      const container = document.getElementById("projects");
+
+      async function fetchRecursive(path) {
+        const res = await fetch(
+          `https://api.github.com/repos/${user}/${repo}/contents/${path}`
+        );
+        const files = await res.json();
+
+        for (let file of files) {
+          if (file.type === "dir") {
+            await fetchRecursive(file.path);
+          } else if (file.name.endsWith(".html")) {
+            const htmlRes = await fetch(file.download_url);
+            const htmlText = await htmlRes.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, "text/html");
+
+            const title = doc.querySelector("title")?.innerText || "Kein Titel";
+            const description =
+              doc.querySelector('meta[name="description"]')?.content ||
+              "Keine Beschreibung";
+            const ogImage =
+              doc.querySelector('meta[property="og:image"]')?.content || "";
+
+            const pageUrl = `https://${user}.github.io/${file.path}`;
+
+            const div = document.createElement("div");
+            div.className = "project";
+            div.innerHTML = `
+              ${ogImage ? `<img src="${ogImage}" alt="${title}">` : ""}
+              <a href="${pageUrl}" target="_blank"><h2>${title}</h2></a>
+              <p>${description}</p>
+            `;
+
+            container.appendChild(div);
+
+            if (!
+              document.querySelector('meta[property="og:image"]').content &&
+              ogImage
+            ) {
+              document.querySelector('meta[property="og:title"]').content =
+                title;
+              document.querySelector(
+                'meta[property="og:description"]'
+              ).content = description;
+              document.querySelector('meta[property="og:image"]').content =
+                ogImage;
+            }
+          }
         }
       }
+
+      await fetchRecursive(folder);
     }
-  }
 
-  await fetchRecursive(folder);
-}
+    function filterProjects(query) {
+      const projects = document.querySelectorAll(".project");
+      projects.forEach((p) => {
+        p.style.display = p.innerText
+          .toLowerCase()
+          .includes(query.toLowerCase())
+          ? "block"
+          : "none";
+      });
+    }
 
-function filterProjects(query) {
-  const projects = document.querySelectorAll('.project');
-  projects.forEach(p => {
-    p.style.display = p.innerText.toLowerCase().includes(query.toLowerCase()) ? 'block' : 'none';
-  });
-}
-
-fetchProjects();
-</script>
+    fetchProjects();
+  </script>
 </body>
 </html>
