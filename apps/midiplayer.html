@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MIDI Flow Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MIDI Player Library -->
+    <script src="https://cdn.jsdelivr.net/combine/npm/midi-player-js@2.1.0,npm/soundfont-player@0.3.0"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .hidden-ui {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-20px);
+            transition: all 0.3s ease;
+        }
+        .visible-ui {
+            opacity: 1;
+            pointer-events: all;
+            transform: translateY(0);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <!-- Main Visualizer Canvas -->
+    <canvas id="visualizerCanvas"></canvas>
+
+    <!-- UI Overlay -->
+    <div id="uiOverlay" class="fixed inset-0 z-50 flex items-center justify-center p-4 visible-ui">
+        <div class="glass-panel w-full max-w-md rounded-2xl p-6 text-white shadow-2xl">
+            <h1 class="text-2xl font-bold mb-6 text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                MIDI Flow Visualizer
+            </h1>
+
+            <div class="space-y-6">
+                <!-- MIDI File Upload -->
+                <div>
+                    <label class="block text-sm font-medium mb-2 text-slate-300">MIDI Datei wählen</label>
+                    <input type="file" id="midiFileInput" accept=".mid,.midi" 
+                        class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition-all cursor-pointer">
+                </div>
+
+                <!-- MIDI Output Selection -->
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-sm font-medium text-slate-300">MIDI Ausgang / Gerät</label>
+                        <button onclick="requestMidiAccess()" class="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-slate-200 transition-colors">Geräte suchen</button>
+                    </div>
+                    <select id="midiOutputSelect" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm focus:ring-blue-500 focus:border-blue-500">
+                        <option value="internal">Interner Software-Synth</option>
+                    </select>
+                    <p id="midiStatus" class="text-[10px] mt-1 text-slate-500 italic">Warte auf MIDI-Berechtigung...</p>
+                </div>
+
+                <!-- Color Theme -->
+                <div>
+                    <label class="block text-sm font-medium mb-2 text-slate-300">Farbschema</label>
+                    <div class="flex gap-2">
+                        <button onclick="setTheme('#3b82f6')" class="w-8 h-8 rounded-full bg-blue-500 border-2 border-white theme-btn" data-color="#3b82f6"></button>
+                        <button onclick="setTheme('#8b5cf6')" class="w-8 h-8 rounded-full bg-purple-500 theme-btn" data-color="#8b5cf6"></button>
+                        <button onclick="setTheme('#10b981')" class="w-8 h-8 rounded-full bg-emerald-500 theme-btn" data-color="#10b981"></button>
+                        <button onclick="setTheme('#f43f5e')" class="w-8 h-8 rounded-full bg-rose-500 theme-btn" data-color="#f43f5e"></button>
+                    </div>
+                </div>
+
+                <!-- Confirm & Play -->
+                <button id="startBtn" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transform active:scale-95 transition-all">
+                    Visualisierung starten
+                </button>
+                
+                <p class="text-[10px] text-center text-slate-500 mt-4">
+                    Drücke <kbd class="px-1 py-0.5 rounded bg-slate-700">ESC</kbd> oder tippe oben links, um Einstellungen zu öffnen.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toggle Button (only visible when UI is hidden) -->
+    <button id="toggleUiBtn" class="fixed top-4 left-4 z-40 p-3 rounded-full glass-panel text-white opacity-0 hover:opacity-100 transition-opacity">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+    </button>
+
+    <script>
+        // --- State Management ---
+        let audioCtx;
+        let player;
+        let instrument;
+        let midiAccess = null;
+        let midiOutput = null;
+        let fallingNotes = [];
+        let activeNotes = new Set();
+        let mainColor = localStorage.getItem('midi_theme') || '#3b82f6';
+        
+        const canvas = document.getElementById('visualizerCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiOverlay = document.getElementById('uiOverlay');
+        const toggleBtn = document.getElementById('toggleUiBtn');
+        const startBtn = document.getElementById('startBtn');
+        const midiOutputSelect = document.getElementById('midiOutputSelect');
+        const fileInput = document.getElementById('midiFileInput');
+        const midiStatus = document.getElementById('midiStatus');
+
+        // --- Initialization ---
+        function init() {
+            resize();
+            requestMidiAccess();
+            loadSettings();
+            animate();
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+
+        // --- MIDI Setup ---
+        async function requestMidiAccess() {
+            if (!navigator.requestMIDIAccess) {
+                midiStatus.innerText = "Browser unterstützt kein MIDI.";
+                midiStatus.classList.add('text-red-400');
+                return;
+            }
+
+            try {
+                midiAccess = await navigator.requestMIDIAccess();
+                midiStatus.innerText = "MIDI bereit.";
+                midiStatus.classList.replace('text-slate-500', 'text-green-400');
+                
+                updateMidiList();
+
+                midiAccess.onstatechange = (e) => {
+                    updateMidiList();
+                };
+
+                midiOutputSelect.onchange = () => {
+                    const id = midiOutputSelect.value;
+                    midiOutput = id === 'internal' ? null : midiAccess.outputs.get(id);
+                    localStorage.setItem('midi_device_id', id);
+                };
+            } catch (err) {
+                midiStatus.innerText = "MIDI Zugriff verweigert oder Fehler.";
+                midiStatus.classList.add('text-red-400');
+                console.error("MIDI Access Error:", err);
+            }
+        }
+
+        function updateMidiList() {
+            if (!midiAccess) return;
+            
+            const currentVal = midiOutputSelect.value || localStorage.getItem('midi_device_id');
+            midiOutputSelect.innerHTML = '<option value="internal">Interner Software-Synth</option>';
+            
+            const outputs = midiAccess.outputs.values();
+            let count = 0;
+            for (let output of outputs) {
+                const option = document.createElement('option');
+                option.value = output.id;
+                option.text = output.name || `Device ${output.id}`;
+                midiOutputSelect.add(option);
+                count++;
+            }
+
+            // Restore selection if possible
+            if (currentVal && midiOutputSelect.querySelector(`option[value="${currentVal}"]`)) {
+                midiOutputSelect.value = currentVal;
+                midiOutput = currentVal === 'internal' ? null : midiAccess.outputs.get(currentVal);
+            }
+            
+            if (count > 0 && midiStatus.innerText.includes("bereit")) {
+                midiStatus.innerText = `${count} Gerät(e) gefunden.`;
+            }
+        }
+
+        // --- Core Logic ---
+        startBtn.onclick = async () => {
+            // AudioContext must start on user gesture
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            if (!fileInput.files[0]) {
+                alert("Bitte wähle zuerst eine MIDI-Datei aus.");
+                return;
+            }
+
+            // Hide UI
+            setUiVisibility(false);
+            
+            // Setup internal sound if needed (instrument loading is async)
+            if (!instrument && midiOutputSelect.value === 'internal') {
+                midiStatus.innerText = "Lade Instrument...";
+                instrument = await Soundfont.instrument(audioCtx, 'acoustic_grand_piano');
+                midiStatus.innerText = "Instrument geladen.";
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (player) player.stop();
+                
+                player = new MidiPlayer.Player((event) => {
+                    handleMidiEvent(event);
+                });
+
+                player.loadArrayBuffer(e.target.result);
+                player.play();
+            };
+            reader.readAsArrayBuffer(fileInput.files[0]);
+        };
+
+        function handleMidiEvent(event) {
+            // Re-sync output object in case it changed
+            if (midiOutputSelect.value !== 'internal' && midiAccess) {
+                midiOutput = midiAccess.outputs.get(midiOutputSelect.value);
+            }
+
+            // Forward to hardware
+            if (midiOutput) {
+                try {
+                    if (event.name === 'Note on') {
+                        midiOutput.send([0x90, event.noteNumber, event.velocity]);
+                    } else if (event.name === 'Note off') {
+                        midiOutput.send([0x80, event.noteNumber, 0]);
+                    }
+                } catch(e) { console.warn("Midi Send Error", e); }
+            } else if (instrument) {
+                // Internal playback
+                if (event.name === 'Note on' && event.velocity > 0) {
+                    instrument.play(event.noteNumber, audioCtx.currentTime, { gain: event.velocity / 127 });
+                }
+            }
+
+            // Visuals
+            if (event.name === 'Note on' && event.velocity > 0) {
+                activeNotes.add(event.noteNumber);
+                createNoteVisual(event.noteNumber);
+            } else if (event.name === 'Note off' || (event.name === 'Note on' && event.velocity === 0)) {
+                activeNotes.delete(event.noteNumber);
+            }
+        }
+
+        function createNoteVisual(noteNum) {
+            const keyCount = 88;
+            const startKey = 21; // A0
+            const xPos = ((noteNum - startKey) / keyCount) * canvas.width;
+            const width = canvas.width / keyCount;
+            
+            fallingNotes.push({
+                x: xPos,
+                y: -50,
+                w: width - 1,
+                h: 40,
+                speed: 5,
+                color: mainColor
+            });
+        }
+
+        function animate() {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw falling notes
+            for (let i = fallingNotes.length - 1; i >= 0; i--) {
+                const note = fallingNotes[i];
+                note.y += note.speed;
+
+                ctx.fillStyle = note.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = note.color;
+                ctx.beginPath();
+                ctx.roundRect(note.x, note.y, note.w, note.h, 4);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                if (note.y > canvas.height) {
+                    fallingNotes.splice(i, 1);
+                }
+            }
+
+            // Draw keyboard visualization at the bottom
+            const keyCount = 88;
+            const kw = canvas.width / keyCount;
+            for (let i = 0; i < keyCount; i++) {
+                const noteNum = i + 21;
+                const isActive = activeNotes.has(noteNum);
+                
+                ctx.fillStyle = isActive ? mainColor : 'rgba(255,255,255,0.05)';
+                ctx.fillRect(i * kw, canvas.height - 25, kw - 1, 25);
+                
+                if (isActive) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = mainColor;
+                    ctx.fillStyle = mainColor;
+                    ctx.fillRect(i * kw, canvas.height - 25, kw - 1, 25);
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- UI Helpers ---
+        function setUiVisibility(visible) {
+            if (visible) {
+                uiOverlay.classList.remove('hidden-ui');
+                uiOverlay.classList.add('visible-ui');
+                toggleBtn.style.opacity = '0';
+            } else {
+                uiOverlay.classList.remove('visible-ui');
+                uiOverlay.classList.add('hidden-ui');
+                toggleBtn.style.opacity = '1';
+            }
+        }
+
+        function setTheme(color) {
+            mainColor = color;
+            localStorage.setItem('midi_theme', color);
+            document.querySelectorAll('.theme-btn').forEach(btn => {
+                btn.style.border = btn.dataset.color === color ? '2px solid white' : 'none';
+            });
+        }
+
+        function loadSettings() {
+            setTheme(mainColor);
+        }
+
+        // --- Interaction ---
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') setUiVisibility(true);
+        });
+
+        toggleBtn.onclick = () => setUiVisibility(true);
+
+        // Auto-Init
+        init();
+
+    </script>
+</body>
+</html>
