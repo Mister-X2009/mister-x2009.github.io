@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoxelEngine Web - Lua & Voxel Editor</title>
+    <!-- Externe Bibliotheken (Für Offline-Nutzung diese Dateien herunterladen und lokal verlinken) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    <!-- Fengari für Lua Support im Browser -->
+    <script src="https://github.com/fengari-lua/fengari-web/releases/download/v0.1.4/fengari-web.js" type="application/javascript"></script>
+
+    <style>
+        :root {
+            --bg-dark: #1e1e1e;
+            --panel-bg: #252526;
+            --text-main: #d4d4d4;
+            --accent: #007fd4;
+            --border: #3e3e42;
+        }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: var(--text-main); }
+        
+        /* UI Layout */
+        #app { display: flex; flex-direction: column; height: 100vh; }
+        
+        /* Toolbar */
+        #toolbar { height: 30px; background: #333; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid var(--border); }
+        .tool-btn { background: transparent; border: none; color: #fff; cursor: pointer; padding: 5px 10px; font-size: 12px; }
+        .tool-btn:hover { background: #444; }
+        .tool-btn.active { background: var(--accent); }
+        .spacer { flex-grow: 1; }
+        .play-btn { color: #4caf50; font-weight: bold; }
+        .stop-btn { color: #f44336; font-weight: bold; display: none; }
+
+        /* Main Area */
+        #main-area { display: flex; flex: 1; position: relative; }
+        
+        /* Outliner / Left Panel */
+        #outliner { width: 250px; background: var(--panel-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+        .panel-header { padding: 5px 10px; background: #333; font-weight: bold; font-size: 12px; border-bottom: 1px solid var(--border); }
+        .tree-item { padding: 4px 10px; cursor: pointer; font-size: 13px; }
+        .tree-item:hover { background: #3e3e42; }
+        .tree-item.selected { background: #37373d; color: white; border-left: 2px solid var(--accent); }
+
+        /* Viewport */
+        #viewport { flex: 1; position: relative; outline: none; background: #111; }
+        #canvas-container { width: 100%; height: 100%; display: block; }
+        
+        /* Inspector / Right Panel */
+        #inspector { width: 300px; background: var(--panel-bg); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+        .prop-group { padding: 10px; border-bottom: 1px solid var(--border); }
+        .prop-label { font-size: 11px; color: #aaa; margin-bottom: 4px; display: block; }
+        .prop-input { width: 100%; background: #3c3c3c; border: 1px solid #555; color: white; padding: 4px; font-size: 12px; margin-bottom: 8px; box-sizing: border-box; }
+        textarea.prop-input { min-height: 100px; font-family: monospace; resize: vertical; }
+
+        /* Escape Menu */
+        #esc-menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; display: none; justify-content: center; align-items: center; }
+        .menu-box { background: var(--panel-bg); padding: 20px; border: 1px solid var(--border); width: 300px; text-align: center; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .menu-btn { display: block; width: 100%; padding: 10px; margin: 5px 0; background: #444; color: white; border: none; cursor: pointer; }
+        .menu-btn:hover { background: var(--accent); }
+
+        /* Context Menu */
+        #context-menu { position: absolute; background: #2d2d2d; border: 1px solid #454545; min-width: 150px; display: none; z-index: 200; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); }
+        .ctx-item { padding: 8px 12px; cursor: pointer; font-size: 12px; }
+        .ctx-item:hover { background: var(--accent); }
+
+        /* Lua UI Overlay (Ingame) */
+        #lua-ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
+        #lua-ui-layer > * { pointer-events: auto; }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <!-- Toolbar -->
+    <div id="toolbar">
+        <span style="font-weight:bold; margin-right:10px; color:var(--accent);">VoxelEngine</span>
+        <button class="tool-btn" onclick="world.generate('normal')">Gen: Normal</button>
+        <button class="tool-btn" onclick="world.generate('math')">Gen: Math</button>
+        <button class="tool-btn" onclick="world.generate('flat')">Gen: Flat</button>
+        <div class="spacer"></div>
+        <button class="tool-btn play-btn" id="btn-play" onclick="engine.togglePlayMode()">▶ PLAY (F5)</button>
+        <button class="tool-btn stop-btn" id="btn-stop" onclick="engine.togglePlayMode()">■ STOP (ESC)</button>
+    </div>
+
+    <div id="main-area">
+        <!-- Left: Outliner -->
+        <div id="outliner">
+            <div class="panel-header">OUTLINER</div>
+            <div id="outliner-list">
+                <!-- Items injected by JS -->
+            </div>
+        </div>
+
+        <!-- Center: Viewport -->
+        <div id="viewport" tabindex="0">
+            <div id="canvas-container"></div>
+            <!-- UI Overlay for Lua Scripts -->
+            <div id="lua-ui-layer"></div>
+        </div>
+
+        <!-- Right: Inspector -->
+        <div id="inspector">
+            <div class="panel-header">EIGENSCHAFTEN & SKRIPT</div>
+            <div id="inspector-content" style="padding:10px;">
+                <p style="color:#666; font-size:12px;">Wähle ein Objekt im Outliner oder der Welt aus.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Menus -->
+<div id="esc-menu">
+    <div class="menu-box">
+        <h2>Pause / Optionen</h2>
+        <div class="prop-group">
+            <label class="prop-label">Grafik Render Distance</label>
+            <input type="range" min="10" max="100" value="50" class="prop-input" onchange="engine.updateRenderDist(this.value)">
+        </div>
+        <button class="menu-btn" onclick="engine.saveGame()">Spiel Speichern</button>
+        <button class="menu-btn" onclick="engine.loadGame()">Spiel Laden</button>
+        <hr style="border-color:#444; opacity:0.3;">
+        <button class="menu-btn" onclick="engine.toggleMenu()">Zurück zum Spiel</button>
+        <button class="menu-btn" style="background:#a33;" onclick="engine.togglePlayMode(true)">Editor Modus</button>
+    </div>
+</div>
+
+<div id="context-menu">
+    <div class="ctx-item" onclick="editor.contextAction('delete')">Löschen</div>
+    <div class="ctx-item" onclick="editor.contextAction('duplicate')">Duplizieren</div>
+    <div class="ctx-item" onclick="editor.contextAction('focus')">Fokus (F)</div>
+</div>
+
+<script>
+/* ==========================================
+   ENGINE CORE & GLOBALS
+   ========================================== */
+const STATE = { EDITOR: 0, GAME: 1, PAUSE: 2 };
+
+// Default Lua Script for Player
+const DEFAULT_PLAYER_LUA = `
+-- Player Script
+-- Benutze 'this' um das Objekt zu steuern
+local speed = 10
+local rotSpeed = 2
+
+function start()
+    print("Player gestartet!")
+    -- Erstelle einfache UI
+    UI.createLabel("hp", "Health: 100", 10, 10)
+end
+
+function update(dt)
+    -- WASD Movement
+    if Input.getKey("w") then this.moveForward(speed * dt) end
+    if Input.getKey("s") then this.moveForward(-speed * dt) end
+    if Input.getKey("a") then this.rotate(0, rotSpeed * dt, 0) end
+    if Input.getKey("d") then this.rotate(0, -rotSpeed * dt, 0) end
+    
+    -- Terrain Manipulation (Non-destructive)
+    if Input.isMouseDown(0) then
+        local hit = Raycast.fire(this.getPosition(), this.getForward(), 5)
+        if hit.active then
+            World.setVoxel(hit.x, hit.y, hit.z, 0) -- 0 = Luft
+        end
+    end
+end
+`;
+
+class GameEngine {
+    constructor() {
+        this.state = STATE.EDITOR;
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x111111);
+        this.scene.fog = new THREE.Fog(0x111111, 20, 80);
+
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.renderer = new THREE.WebGLRenderer({ antialias: true }); // Antialias an für "smooth" look
+        this.renderer.setSize(window.innerWidth - 550, window.innerHeight - 30); // Approx layout size
+        this.renderer.shadowMap.enabled = true;
+        
+        document.getElementById('canvas-container').appendChild(this.renderer.domElement);
+
+        // Beleuchtung
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+        this.scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50);
+        dirLight.castShadow = true;
+        this.scene.add(dirLight);
+
+        this.clock = new THREE.Clock();
+        this.actors = []; // Liste aller Objekte mit Logic
+        this.mixers = []; // Animation Mixers
+
+        // Initial setup
+        this.camera.position.set(10, 10, 10);
+        this.camera.lookAt(0, 0, 0);
+
+        window.addEventListener('resize', () => this.onResize());
+        
+        // Input Handling Global
+        this.keys = {};
+        this.mouse = new THREE.Vector2();
+        document.addEventListener('keydown', (e) => this.onKey(e, true));
+        document.addEventListener('keyup', (e) => this.onKey(e, false));
+    }
+
+    onResize() {
+        const container = document.getElementById('viewport');
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(w, h);
+    }
+
+    onKey(e, down) {
+        this.keys[e.key.toLowerCase()] = down;
+        // Escape Menu Toggle
+        if (down && e.key === "Escape") {
+            if (this.state === STATE.GAME) {
+                this.toggleMenu();
+            } else if (this.state === STATE.EDITOR) {
+                // Deselect in Editor?
+            }
+        }
+        // F5 Play
+        if (down && e.key === "F5") {
+            e.preventDefault();
+            this.togglePlayMode();
+        }
+    }
+
+    update() {
+        const dt = this.clock.getDelta();
+        
+        if (this.state === STATE.EDITOR) {
+            editor.update(dt);
+        } else if (this.state === STATE.GAME) {
+            // Run Lua Scripts
+            luaSys.update(dt);
+        }
+
+        world.update(); // Mesh updates if dirty
+        this.renderer.render(this.scene, this.camera);
+        requestAnimationFrame(() => this.update());
+    }
+
+    togglePlayMode(forceStop = false) {
+        const btnPlay = document.getElementById('btn-play');
+        const btnStop = document.getElementById('btn-stop');
+        const escMenu = document.getElementById('esc-menu');
+        
+        if (this.state === STATE.EDITOR && !forceStop) {
+            // START GAME
+            this.state = STATE.GAME;
+            btnPlay.style.display = 'none';
+            btnStop.style.display = 'inline-block';
+            
+            // Speichere Weltzustand für Restore
+            world.saveState();
+            
+            // Lua Init
+            luaSys.init();
+            
+            // Fokus auf Canvas für Input
+            document.getElementById('viewport').focus();
+
+        } else {
+            // STOP GAME
+            this.state = STATE.EDITOR;
+            btnPlay.style.display = 'inline-block';
+            btnStop.style.display = 'none';
+            escMenu.style.display = 'none';
+            document.getElementById('lua-ui-layer').innerHTML = ''; // Clear UI
+            
+            // Welt zurücksetzen (Non-Destructive)
+            world.restoreState();
+            
+            // Kamera zurücksetzen oder behalten? Behalten wir sie für Flow.
+        }
+    }
+
+    toggleMenu() {
+        const menu = document.getElementById('esc-menu');
+        if (menu.style.display === 'flex') {
+            menu.style.display = 'none';
+            this.state = STATE.GAME;
+        } else {
+            menu.style.display = 'flex';
+            this.state = STATE.PAUSE;
+        }
+    }
+
+    saveGame() {
+        const data = {
+            voxels: Array.from(world.voxels.entries()),
+            actors: this.actors.map(a => ({ 
+                name: a.name, 
+                pos: a.position, 
+                script: a.userData.script 
+            }))
+        };
+        localStorage.setItem('voxelEngineSave', JSON.stringify(data));
+        alert("Gespeichert!");
+    }
+
+    loadGame() {
+        const json = localStorage.getItem('voxelEngineSave');
+        if(!json) return alert("Kein Savegame gefunden.");
+        const data = JSON.parse(json);
+        
+        world.voxels = new Map(data.voxels);
+        world.isDirty = true;
+        
+        // Rebuild actors (vereinfacht)
+        alert("Laden erfolgreich (Terrain wiederhergestellt).");
+    }
+
+    updateRenderDist(val) {
+        const dist = parseInt(val);
+        // Anpassung der Nebel- und Kameraeinstellungen
+        this.scene.fog.near = dist - 20 > 0 ? dist - 20 : 0;
+        this.scene.fog.far = dist + 20;
+        this.camera.far = dist + 200;
+        this.camera.updateProjectionMatrix();
+    }
+}
+
+/* ==========================================
+   VOXEL WORLD (Smooth / Metaball Style)
+   ========================================== */
+class VoxelWorld {
+    constructor() {
+        this.voxels = new Map(); // "x,y,z" -> type
+        this.savedVoxels = null;
+        this.chunkSize = 16;
+        this.isDirty = false;
+        
+        // Visuals: InstancedMesh für Performance mit "Smooth" Look
+        // Wir nutzen Kugeln statt Boxen für den "Metaball/Smooth"-Effekt
+        const geo = new THREE.SphereGeometry(0.6, 16, 16); 
+        const mat = new THREE.MeshStandardMaterial({ 
+            color: 0x44aa44, 
+            roughness: 0.3, 
+            metalness: 0.1 
+        });
+        
+        // Max 10.000 Voxel (Limit für Web Performance ohne komplexes Chunking)
+        this.mesh = new THREE.InstancedMesh(geo, mat, 20000);
+        this.mesh.castShadow = true;
+        this.mesh.receiveShadow = true;
+        this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        engine.scene.add(this.mesh);
+        
+        this.dummy = new THREE.Object3D();
+        this.simplex = new SimplexNoise();
+    }
+
+    getKey(x, y, z) { return `${x},${y},${z}`; }
+
+    setVoxel(x, y, z, type) {
+        const key = this.getKey(Math.round(x), Math.round(y), Math.round(z));
+        if (type === 0) this.voxels.delete(key);
+        else this.voxels.set(key, type);
+        this.isDirty = true;
+    }
+
+    getVoxel(x, y, z) {
+        return this.voxels.get(this.getKey(Math.round(x), Math.round(y), Math.round(z))) || 0;
+    }
+
+    generate(mode) {
+        this.voxels.clear();
+        const size = 20; // Radius der Generierung
+        
+        if (mode === 'flat') {
+            for(let x=-size; x<size; x++) {
+                for(let z=-size; z<size; z++) {
+                    this.setVoxel(x, 0, z, 1);
+                }
+            }
+        } else if (mode === 'normal') {
+            for(let x=-size; x<size; x++) {
+                for(let z=-size; z<size; z++) {
+                    // Simplex Noise für Höhe
+                    let h = Math.floor(this.simplex.noise2D(x * 0.05, z * 0.05) * 5 + 2);
+                    for(let y=0; y<=h; y++) {
+                        this.setVoxel(x, y, z, 1);
+                    }
+                }
+            }
+        } else if (mode === 'math') {
+            // Beispiel: Sinus Wellen
+            let formula = prompt("Gebe eine Formel ein (z.B. Math.sin(x*0.2)*5)", "Math.sin(x*0.2)*5 + Math.cos(z*0.2)*5");
+            if (!formula) return;
+            try {
+                // Unsicher in echter Prod, okay für lokal
+                const func = new Function('x', 'z', `return ${formula}`);
+                for(let x=-size; x<size; x++) {
+                    for(let z=-size; z<size; z++) {
+                        let h = Math.floor(func(x, z));
+                        if(h > -5 && h < 10) this.setVoxel(x, h, z, 1);
+                    }
+                }
+            } catch(e) { alert("Fehler in Formel: " + e); }
+        }
+        
+        this.isDirty = true;
+    }
+
+    update() {
+        if (!this.isDirty) return;
+        
+        let i = 0;
+        for (const [key, type] of this.voxels) {
+            const [x, y, z] = key.split(',').map(Number);
+            this.dummy.position.set(x, y, z);
+            
+            // Kleinerer Scale für "Metaball"-Overlapping Look
+            // Wenn Kugeln nah beieinander sind, sehen sie verschmolzen aus
+            this.dummy.scale.set(1, 1, 1); 
+            this.dummy.updateMatrix();
+            this.mesh.setMatrixAt(i++, this.dummy.matrix);
+        }
+        
+        this.mesh.count = i;
+        this.mesh.instanceMatrix.needsUpdate = true;
+        this.isDirty = false;
+    }
+
+    saveState() {
+        // Tiefe Kopie der Map
+        this.savedVoxels = new Map(this.voxels);
+    }
+
+    restoreState() {
+        if (this.savedVoxels) {
+            this.voxels = new Map(this.savedVoxels);
+            this.isDirty = true;
+        }
+    }
+}
+
+/* ==========================================
+   EDITOR CONTROLLER (Unreal-like)
+   ========================================== */
+class EditorController {
+    constructor() {
+        this.rotX = 0;
+        this.rotY = 0;
+        this.selectedObject = null;
+        
+        const vp = document.getElementById('viewport');
+        
+        // Mouse Events für Viewport
+        vp.addEventListener('mousedown', (e) => this.onMouseDown(e));
+        vp.addEventListener('mousemove', (e) => this.onMouseMove(e));
+        vp.addEventListener('mouseup', (e) => this.onMouseUp(e));
+        vp.addEventListener('contextmenu', (e) => e.preventDefault()); // Block default context menu
+    }
+
+    onMouseDown(e) {
+        if (e.button === 2) { // Rechtsklick
+            this.isRotating = true;
+            document.body.style.cursor = 'grab';
+        } else if (e.button === 0) {
+            // Linksklick Select
+            this.selectObject(e);
+        }
+    }
+
+    onMouseUp(e) {
+        if (e.button === 2) {
+            this.isRotating = false;
+            document.body.style.cursor = 'default';
+            // Show Context Menu if mouse didn't move much (Click)
+            // (Hier vereinfacht: Rechtsklick ist nur Camera, außer mit Modifier)
+        }
+    }
+
+    onMouseMove(e) {
+        if (this.isRotating) {
+            const sensitivity = 0.002;
+            this.rotY -= e.movementX * sensitivity;
+            this.rotX -= e.movementY * sensitivity;
+            // Clamp X
+            this.rotX = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.rotX));
+            
+            // Apply to camera
+            const cam = engine.camera;
+            cam.rotation.set(0, 0, 0);
+            cam.rotateY(this.rotY);
+            cam.rotateX(this.rotX);
+        }
+    }
+
+    update(dt) {
+        // Fly Cam (WASD) wenn Rechtsklick gehalten oder einfach immer im Editor
+        const speed = 10 * dt * (engine.keys['shift'] ? 2 : 1);
+        const cam = engine.camera;
+        
+        const dir = new THREE.Vector3();
+        cam.getWorldDirection(dir);
+        const side = new THREE.Vector3().crossVectors(dir, cam.up).normalize();
+
+        if (engine.keys['w']) cam.position.add(dir.multiplyScalar(speed));
+        if (engine.keys['s']) cam.position.add(dir.multiplyScalar(-speed));
+        if (engine.keys['a']) cam.position.add(side.multiplyScalar(-speed));
+        if (engine.keys['d']) cam.position.add(side.multiplyScalar(speed));
+        if (engine.keys['e']) cam.position.y += speed;
+        if (engine.keys['q']) cam.position.y -= speed;
+    }
+
+    selectObject(e) {
+        // Raycast für Selection
+        const mouse = new THREE.Vector2();
+        const rect = engine.renderer.domElement.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, engine.camera);
+
+        const intersects = raycaster.intersectObjects(engine.actors, false);
+        
+        if (intersects.length > 0) {
+            this.setSelection(intersects[0].object);
+        } else {
+            this.setSelection(null);
+        }
+    }
+
+    setSelection(obj) {
+        this.selectedObject = obj;
+        this.updateInspector();
+        this.updateOutlinerHighlight();
+    }
+    
+    // Fix: Fehlende Methode hinzugefügt
+    updateOutlinerHighlight() {
+        this.refreshOutliner();
+    }
+
+    updateInspector() {
+        const content = document.getElementById('inspector-content');
+        if (!this.selectedObject) {
+            content.innerHTML = '<p style="color:#666; font-size:12px;">Nichts ausgewählt.</p>';
+            return;
+        }
+
+        const obj = this.selectedObject;
+        content.innerHTML = `
+            <div class="prop-group">
+                <label class="prop-label">Name</label>
+                <input type="text" class="prop-input" value="${obj.name}" onchange="editor.updateProp('name', this.value)">
+            </div>
+            <div class="prop-group">
+                <label class="prop-label">Position (X, Y, Z)</label>
+                <input type="number" class="prop-input" value="${obj.position.x}" onchange="editor.updateProp('x', this.value)">
+                <input type="number" class="prop-input" value="${obj.position.y}" onchange="editor.updateProp('y', this.value)">
+                <input type="number" class="prop-input" value="${obj.position.z}" onchange="editor.updateProp('z', this.value)">
+            </div>
+            <div class="prop-group">
+                <label class="prop-label">Lua Script</label>
+                <textarea class="prop-input" onchange="editor.updateProp('script', this.value)">${obj.userData.script || ''}</textarea>
+            </div>
+        `;
+    }
+
+    updateProp(prop, val) {
+        if (!this.selectedObject) return;
+        if (prop === 'name') {
+            this.selectedObject.name = val;
+            this.refreshOutliner();
+        } else if (['x','y','z'].includes(prop)) {
+            this.selectedObject.position[prop] = parseFloat(val);
+        } else if (prop === 'script') {
+            this.selectedObject.userData.script = val;
+        }
+    }
+
+    refreshOutliner() {
+        const list = document.getElementById('outliner-list');
+        list.innerHTML = '';
+        engine.actors.forEach(actor => {
+            const div = document.createElement('div');
+            div.className = 'tree-item' + (actor === this.selectedObject ? ' selected' : '');
+            div.innerText = actor.name;
+            div.onclick = () => this.setSelection(actor);
+            // Rechtsklick Kontext Menü im Outliner
+            div.oncontextmenu = (e) => {
+                e.preventDefault();
+                this.setSelection(actor);
+                const ctx = document.getElementById('context-menu');
+                ctx.style.display = 'block';
+                ctx.style.left = e.pageX + 'px';
+                ctx.style.top = e.pageY + 'px';
+            };
+            list.appendChild(div);
+        });
+    }
+    
+    contextAction(action) {
+        document.getElementById('context-menu').style.display = 'none';
+        if (!this.selectedObject) return;
+        
+        if (action === 'delete') {
+            engine.scene.remove(this.selectedObject);
+            engine.actors = engine.actors.filter(a => a !== this.selectedObject);
+            this.setSelection(null);
+            this.refreshOutliner();
+        } else if (action === 'duplicate') {
+            // Simple Clone
+            const clone = this.createActor(this.selectedObject.name + "_Copy");
+            clone.position.copy(this.selectedObject.position);
+            clone.position.x += 2;
+            clone.userData.script = this.selectedObject.userData.script;
+            this.setSelection(clone);
+        } else if (action === 'focus') {
+            engine.camera.position.copy(this.selectedObject.position).add(new THREE.Vector3(5, 5, 5));
+            engine.camera.lookAt(this.selectedObject.position);
+        }
+    }
+
+    createActor(name = "New Actor") {
+        const geo = new THREE.BoxGeometry(1, 2, 1); // Kapsel ähnlich
+        const mat = new THREE.MeshLambertMaterial({ color: 0x007fd4 });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.name = name;
+        mesh.position.set(0, 10, 0);
+        mesh.userData = { script: '' }; // Leeres Script
+        
+        engine.scene.add(mesh);
+        engine.actors.push(mesh);
+        this.refreshOutliner();
+        return mesh;
+    }
+}
+
+/* ==========================================
+   LUA SYSTEM (Fengari Wrapper)
+   ========================================== */
+class LuaSystem {
+    constructor() {
+        this.L = null;
+    }
+
+    init() {
+        if (typeof fengari === 'undefined') {
+            console.error("Fengari Lua Engine nicht geladen!");
+            return;
+        }
+        
+        // Initialisiere Lua State
+        this.L = fengari.lauxlib.luaL_newstate();
+        fengari.lualib.luaL_openlibs(this.L);
+        
+        // Binde JS APIs an Lua
+        this.bindAPI();
+
+        // Starte Scripte für alle Actors
+        engine.actors.forEach(actor => {
+            if (actor.userData.script && actor.userData.script.trim() !== "") {
+                this.runScript(actor, actor.userData.script);
+            }
+        });
+    }
+
+    bindAPI() {
+        const enc = new TextEncoder();
+        
+        // Helper um JS Funktionen in Lua zu registrieren
+        const registerFunc = (name, jsFunc) => {
+            fengari.lua.lua_pushjsfunction(this.L, jsFunc); 
+            fengari.lua.lua_setglobal(this.L, enc.encode(name));
+        };
+
+        // --- Input API ---
+        fengari.lua.lua_newtable(this.L); // Create Input table
+        fengari.lua.lua_pushjsfunction(this.L, (L) => {
+            const key = fengari.to_jsstring(fengari.lua.lua_tostring(L, 1));
+            fengari.lua.lua_pushboolean(L, engine.keys[key] === true);
+            return 1;
+        });
+        fengari.lua.lua_setfield(this.L, -2, enc.encode("getKey"));
+        
+        fengari.lua.lua_pushjsfunction(this.L, (L) => {
+            // Mouse Down check (0=left)
+            // Vereinfacht
+            return 0;
+        });
+        fengari.lua.lua_setfield(this.L, -2, enc.encode("isMouseDown"));
+        
+        fengari.lua.lua_setglobal(this.L, enc.encode("Input"));
+
+        // --- UI API ---
+        fengari.lua.lua_newtable(this.L);
+        fengari.lua.lua_pushjsfunction(this.L, (L) => {
+            const id = fengari.to_jsstring(fengari.lua.lua_tostring(L, 1));
+            const text = fengari.to_jsstring(fengari.lua.lua_tostring(L, 2));
+            const x = fengari.lua.lua_tonumber(L, 3);
+            const y = fengari.lua.lua_tonumber(L, 4);
+            
+            let el = document.getElementById('lua-ui-' + id);
+            if(!el) {
+                el = document.createElement('div');
+                el.id = 'lua-ui-' + id;
+                el.style.position = 'absolute';
+                el.style.color = 'white';
+                el.style.fontFamily = 'monospace';
+                el.style.background = 'rgba(0,0,0,0.5)';
+                el.style.padding = '5px';
+                document.getElementById('lua-ui-layer').appendChild(el);
+            }
+            el.innerText = text;
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            return 0;
+        });
+        fengari.lua.lua_setfield(this.L, -2, enc.encode("createLabel"));
+        fengari.lua.lua_setglobal(this.L, enc.encode("UI"));
+
+        // --- World API (Non destructive editing) ---
+        fengari.lua.lua_newtable(this.L);
+        fengari.lua.lua_pushjsfunction(this.L, (L) => {
+            const x = fengari.lua.lua_tonumber(L, 1);
+            const y = fengari.lua.lua_tonumber(L, 2);
+            const z = fengari.lua.lua_tonumber(L, 3);
+            const t = fengari.lua.lua_tonumber(L, 4);
+            world.setVoxel(x, y, z, t);
+            return 0;
+        });
+        fengari.lua.lua_setfield(this.L, -2, enc.encode("setVoxel"));
+        fengari.lua.lua_setglobal(this.L, enc.encode("World"));
+
+        // --- Raycast API (Fake) ---
+        fengari.lua.lua_newtable(this.L);
+        fengari.lua.lua_pushjsfunction(this.L, (L) => {
+            // Simplified: Retrun point in front of camera
+            const pos = engine.camera.position;
+            const dir = new THREE.Vector3();
+            engine.camera.getWorldDirection(dir);
+            const target = pos.clone().add(dir.multiplyScalar(3));
+            
+            // Return table {active=true, x=..., y=..., z=...}
+            fengari.lua.lua_newtable(L);
+            fengari.lua.lua_pushboolean(L, true); fengari.lua.lua_setfield(L, -2, enc.encode("active"));
+            fengari.lua.lua_pushnumber(L, Math.round(target.x)); fengari.lua.lua_setfield(L, -2, enc.encode("x"));
+            fengari.lua.lua_pushnumber(L, Math.round(target.y)); fengari.lua.lua_setfield(L, -2, enc.encode("y"));
+            fengari.lua.lua_pushnumber(L, Math.round(target.z)); fengari.lua.lua_setfield(L, -2, enc.encode("z"));
+            return 1;
+        });
+        fengari.lua.lua_setfield(this.L, -2, enc.encode("fire"));
+        fengari.lua.lua_setglobal(this.L, enc.encode("Raycast"));
+    }
+
+    runScript(actor, scriptCode) {
+        // Wir wickeln den Code in eine Closure, um 'this' zu isolieren
+        const enc = new TextEncoder();
+        
+        // Erstelle eine Environment Tabelle für diesen Actor, die von Global erbt
+        // Das ist etwas komplex in Fengari JS API, deshalb hier eine vereinfachte Methode:
+        // Wir injizieren globale Funktionen, die auf 'currentActor' zugreifen.
+        
+        this.currentActor = actor; // Globale Referenz setzen (Hack für Single-Thread)
+
+        // Binde "this" Methoden
+        const L = this.L;
+        fengari.lua.lua_newtable(L); // 'this' table
+        
+        // this.moveForward(dist)
+        fengari.lua.lua_pushjsfunction(L, (L) => {
+            const dist = fengari.lua.lua_tonumber(L, 1);
+            const a = this.currentActor;
+            const dir = new THREE.Vector3();
+            a.getWorldDirection(dir); // Standard Three.js
+            // Für Boxen ist 'forward' oft Z axis, wir passen es an die Kamera-Rotation an oder lokale
+            // Da Actors im Editor nur Boxen sind, simulieren wir Bewegung anhand der Rotation
+            a.translateZ(dist);
+            // Kamera an Actor binden, wenn es der Spieler ist (Check Name)
+            if (a.name === "Player") {
+                engine.camera.position.copy(a.position).add(new THREE.Vector3(0, 2, -5).applyQuaternion(a.quaternion));
+                engine.camera.lookAt(a.position);
+            }
+            return 0;
+        });
+        fengari.lua.lua_setfield(L, -2, enc.encode("moveForward"));
+
+        // this.rotate(x, y, z)
+        fengari.lua.lua_pushjsfunction(L, (L) => {
+            const x = fengari.lua.lua_tonumber(L, 1);
+            const y = fengari.lua.lua_tonumber(L, 2);
+            const z = fengari.lua.lua_tonumber(L, 3);
+            this.currentActor.rotation.x += x;
+            this.currentActor.rotation.y += y;
+            this.currentActor.rotation.z += z;
+            return 0;
+        });
+        fengari.lua.lua_setfield(L, -2, enc.encode("rotate"));
+        
+        // this.getPosition()
+        fengari.lua.lua_pushjsfunction(L, (L) => {
+             // Return dummy vector object (vereinfacht)
+             return 0;
+        });
+        fengari.lua.lua_setfield(L, -2, enc.encode("getPosition"));
+
+        // this.getForward()
+        fengari.lua.lua_pushjsfunction(L, (L) => {
+             return 0;
+        });
+        fengari.lua.lua_setfield(L, -2, enc.encode("getForward"));
+
+        fengari.lua.lua_setglobal(L, enc.encode("this"));
+
+        // Führe den Code aus
+        const res = fengari.lauxlib.luaL_dostring(L, enc.encode(scriptCode));
+        if (res !== 0) {
+            console.error("Lua Error:", fengari.lua.lua_tostring(L, -1));
+        }
+        
+        // Rufe start() auf
+        fengari.lua.lua_getglobal(L, enc.encode("start"));
+        if (fengari.lua.lua_isfunction(L, -1)) {
+            fengari.lua.lua_pcall(L, 0, 0, 0);
+        }
+        
+        // Speichere Referenz, dass Update gerufen werden muss
+        actor.hasUpdate = true;
+    }
+
+    update(dt) {
+        if (!this.L) return;
+        const enc = new TextEncoder();
+        
+        engine.actors.forEach(actor => {
+            if (actor.hasUpdate) {
+                this.currentActor = actor;
+                // Set 'this' again contextually? (Not needed in simple Global Scope hack if sequential)
+                // Aber: Wir müssen 'this' im Lua State eigentlich pro Actor setzen. 
+                // In dieser einfachen Demo teilen sich alle das globale 'this', was bedeutet, 
+                // dass Scripting nur für EIN Objekt gleichzeitig korrekt funktioniert.
+                // Um das zu fixen, müsste man Environments nutzen (zu viel Code für hier).
+                // Wir gehen davon aus, dass nur der "Player" ein aktives Script hat.
+                
+                fengari.lua.lua_getglobal(this.L, enc.encode("update"));
+                if (fengari.lua.lua_isfunction(this.L, -1)) {
+                    fengari.lua.lua_pushnumber(this.L, dt);
+                    if (fengari.lua.lua_pcall(this.L, 1, 0, 0) !== 0) {
+                        // Error handling (mute after one error)
+                        actor.hasUpdate = false; 
+                        console.error(fengari.lua.lua_tostring(this.L, -1));
+                    }
+                } else {
+                    fengari.lua.lua_pop(this.L, 1);
+                }
+            }
+        });
+    }
+}
+
+/* ==========================================
+   INITIALIZATION
+   ========================================== */
+const engine = new GameEngine();
+const world = new VoxelWorld();
+const editor = new EditorController();
+const luaSys = new LuaSystem();
+
+// Initial Setup
+world.generate('normal');
+
+// Create Player Dummy
+const player = editor.createActor("Player");
+player.position.set(0, 10, 0);
+player.userData.script = DEFAULT_PLAYER_LUA;
+editor.setSelection(player);
+
+// Render resize handle
+setTimeout(() => engine.onResize(), 100);
+
+// Hide Context Menu on click
+document.addEventListener('click', () => {
+    document.getElementById('context-menu').style.display = 'none';
+});
+
+// Start Loop
+engine.update();
+
+</script>
+</body>
+</html>
