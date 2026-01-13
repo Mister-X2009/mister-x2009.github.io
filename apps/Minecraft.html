@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Voxel Survival Pro Mobile</title>
+    <title>Voxel Survival Mobile Pro</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=VT323&display=swap');
 
@@ -18,6 +18,29 @@
 
         canvas { display: block; }
 
+        /* Start Overlay (für Fullscreen) */
+        #start-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+        }
+        #start-btn {
+            padding: 20px 40px;
+            font-size: 24px;
+            background: #5f5;
+            color: black;
+            border: none;
+            border-radius: 10px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
         /* HUD */
         #hud {
             position: absolute;
@@ -27,7 +50,8 @@
             flex-direction: column;
             justify-content: flex-end;
             align-items: center;
-            padding-bottom: env(safe-area-inset-bottom, 10px);
+            padding-bottom: 20px;
+            z-index: 10;
         }
 
         #crosshair {
@@ -35,40 +59,43 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 16px;
-            height: 16px;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.8);
+            border-radius: 50%;
+            z-index: 10;
+            box-shadow: 0 0 4px black;
         }
-        #crosshair::before, #crosshair::after {
-            content: ''; position: absolute; background: white; opacity: 0.8;
-        }
-        #crosshair::before { top: 7px; left: 0; width: 16px; height: 2px; }
-        #crosshair::after { top: 0; left: 7px; width: 2px; height: 16px; }
 
         #mining-progress {
             position: absolute;
             top: 55%;
             left: 50%;
             transform: translateX(-50%);
-            width: 60px;
-            height: 8px;
+            width: 80px;
+            height: 10px;
             background: rgba(0,0,0,0.5);
-            border: 1px solid white;
+            border: 2px solid white;
             display: none;
+            border-radius: 5px;
+            overflow: hidden;
+            z-index: 10;
         }
-        #mining-bar { width: 0%; height: 100%; background: #5f5; }
+        #mining-bar { width: 0%; height: 100%; background: #0f0; }
 
-        /* Status Bars */
         #status-bars {
             display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 15px;
+            margin-bottom: 15px;
+            pointer-events: auto;
         }
         .bar-container {
-            width: 80px;
-            height: 8px;
+            width: 100px;
+            height: 10px;
             background: rgba(0,0,0,0.5);
-            border: 1.5px solid #fff;
-            position: relative;
+            border: 2px solid #fff;
+            border-radius: 5px;
+            overflow: hidden;
         }
         .bar-fill { height: 100%; transition: width 0.3s; }
         #health-fill { background: #ff4444; width: 100%; }
@@ -77,18 +104,16 @@
         /* Hotbar */
         #hotbar {
             display: flex;
-            gap: 3px;
+            gap: 5px;
             background: rgba(0,0,0,0.6);
-            padding: 4px;
-            border-radius: 4px;
+            padding: 5px;
+            border-radius: 8px;
             pointer-events: auto;
-            max-width: 95vw;
-            overflow-x: auto;
         }
         .slot {
-            width: 40px;
-            height: 40px;
-            border: 2px solid #555;
+            width: 50px;
+            height: 50px;
+            border: 3px solid #555;
             background: #333;
             display: flex;
             justify-content: center;
@@ -96,90 +121,106 @@
             position: relative;
             color: white;
             font-family: 'VT323', monospace;
-            font-size: 16px;
-            flex-shrink: 0;
+            border-radius: 6px;
+            touch-action: none; /* Wichtig für Drag & Drop */
         }
-        .slot.active { border-color: #fff; background: #555; }
-        .slot .icon { width: 28px; height: 28px; border-radius: 2px; }
-        .count { position: absolute; bottom: 1px; right: 2px; pointer-events: none; text-shadow: 1px 1px 1px #000; }
+        .slot.active { border-color: #fff; background: #666; }
+        .slot .icon { width: 32px; height: 32px; border: 1px solid rgba(0,0,0,0.5); }
+        .count { position: absolute; bottom: 2px; right: 4px; pointer-events: none; font-size: 16px; text-shadow: 1px 1px 0 #000; }
 
-        /* Mobile Controls */
-        #joystick-container {
+        /* Controls */
+        #joy-base {
             position: absolute;
-            bottom: 40px;
-            left: 40px;
+            bottom: 50px;
+            left: 50px;
             width: 120px;
             height: 120px;
             background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
             border-radius: 50%;
             pointer-events: auto;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            z-index: 20;
         }
-        #joystick-knob {
+        #joy-knob {
+            position: absolute;
+            top: 35px;
+            left: 35px;
             width: 50px;
             height: 50px;
-            background: rgba(255,255,255,0.4);
+            background: rgba(255,255,255,0.5);
             border-radius: 50%;
-            position: absolute;
         }
-        #action-buttons {
+
+        #action-area {
             position: absolute;
-            bottom: 40px;
-            right: 40px;
+            bottom: 50px;
+            right: 50px;
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 20px;
             pointer-events: auto;
+            z-index: 20;
         }
-        .mobile-btn {
-            width: 60px;
-            height: 60px;
+        .action-btn {
+            width: 70px;
+            height: 70px;
             background: rgba(255,255,255,0.2);
-            border: 2px solid white;
+            border: 3px solid white;
             border-radius: 50%;
-            color: white;
             display: flex;
             justify-content: center;
             align-items: center;
+            color: white;
             font-weight: bold;
             font-size: 14px;
             backdrop-filter: blur(5px);
         }
 
-        /* Inventory */
-        #menu-overlay {
+        /* Inventory Overlay */
+        #inv-overlay {
             position: absolute;
             inset: 0;
             background: rgba(0,0,0,0.85);
             display: none;
             justify-content: center;
             align-items: center;
-            z-index: 2000;
+            z-index: 100;
             pointer-events: auto;
         }
-        #inventory-container {
-            background: #c6c6c6;
+        #inv-panel {
+            background: #aaa;
             border: 4px solid #fff;
             padding: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            color: #333;
-            max-width: 90vw;
-            max-height: 90vh;
-            overflow-y: auto;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px black;
         }
-        .grid { display: grid; gap: 4px; }
-        .inv-grid { grid-template-columns: repeat(6, 1fr); }
-        .craft-container { display: flex; gap: 10px; align-items: center; justify-content: center; }
-        .craft-grid { grid-template-columns: repeat(2, 1fr); }
+        .grid { display: grid; gap: 5px; margin-top: 10px; }
+        .inv-grid { grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); }
+        
+        /* Drag Helper */
+        #drag-helper {
+            position: fixed;
+            pointer-events: none;
+            z-index: 1000;
+            width: 50px;
+            height: 50px;
+            display: none;
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
 
+    <div id="start-screen">
+        <h1>VOXEL SURVIVAL</h1>
+        <p>Tippe auf Start für Vollbild</p>
+        <button id="start-btn">STARTEN</button>
+    </div>
+
     <div id="hud">
+        <div id="crosshair"></div>
         <div id="mining-progress"><div id="mining-bar"></div></div>
         <div id="status-bars">
             <div class="bar-container"><div id="health-fill" class="bar-fill"></div></div>
@@ -188,376 +229,462 @@
         <div id="hotbar"></div>
     </div>
 
-    <!-- Mobile Controls -->
-    <div id="joystick-container">
-        <div id="joystick-knob"></div>
+    <div id="joy-base"><div id="joy-knob"></div></div>
+
+    <div id="action-area">
+        <div class="action-btn" id="btn-jump">SPRUNG</div>
+        <div class="action-btn" id="btn-inv">INV</div>
     </div>
 
-    <div id="action-buttons">
-        <div class="mobile-btn" id="btn-jump">SPRUNG</div>
-        <div class="mobile-btn" id="btn-inv">INV</div>
-    </div>
-
-    <div id="menu-overlay">
-        <div id="inventory-container">
-            <div style="display:flex; justify-content: space-between; align-items: center">
-                <h3 style="margin:0">Inventar</h3>
-                <button onclick="toggleMenu()" style="padding: 5px 15px">X</button>
+    <div id="inv-overlay">
+        <div id="inv-panel">
+            <div style="display:flex; justify-content: space-between; align-items: center;">
+                <h2 style="margin:0; color:#333; font-family:'VT323'; font-size: 28px;">INVENTAR</h2>
+                <button onclick="toggleInv()" style="padding:5px 15px; background:#d55; border:none; color:white; border-radius:4px;">X</button>
             </div>
-            <div class="craft-container">
-                <div id="crafting-grid" class="grid craft-grid"></div>
-                <div style="font-size: 20px;">➜</div>
-                <div id="craft-result" class="slot" onclick="takeCraftResult()"></div>
-            </div>
-            <div id="main-inventory" class="grid inv-grid"></div>
-            <p style="font-size: 10px; margin: 0;">Kurz Tippen (Spiel): Block setzen. Lang Tippen: Block abbauen.</p>
+            <div id="inv-grid" class="grid inv-grid"></div>
+            <p style="color:#333; font-size:12px; margin-top:10px;">Ziehe Items zum Bewegen (Drag & Drop)</p>
         </div>
     </div>
+
+    <!-- Visuelles Element beim Ziehen -->
+    <div id="drag-helper"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
 
     <script>
-        // --- CONFIG ---
         const BLOCK_TYPES = {
             air: { id: 0 },
-            grass: { id: 1, name: "Gras", stackable: true, hardness: 0.6, color: '#5d8c36' },
-            dirt: { id: 2, name: "Erde", stackable: true, hardness: 0.5, color: '#553a26' },
-            stone: { id: 3, name: "Stein", stackable: true, hardness: 1.5, tool: 'pickaxe', color: '#888' },
-            log: { id: 4, name: "Holzstamm", stackable: true, hardness: 1.0, tool: 'axe', color: '#4b3621' },
-            leaves: { id: 5, name: "Blätter", stackable: true, hardness: 0.2, color: '#2d5a27' },
-            planks: { id: 6, name: "Bretter", stackable: true, hardness: 1.0, tool: 'axe', color: '#8a6a4a' },
-            glass: { id: 7, name: "Glas", stackable: true, hardness: 0.3, transparent: true, color: '#add8e6' },
-            coal_ore: { id: 8, name: "Kohle-Erz", stackable: true, hardness: 2.0, tool: 'pickaxe', color: '#333' },
-            stick: { id: 10, name: "Stock", stackable: true, isItem: true, color: '#7a5a3a' },
-            wooden_pickaxe: { id: 11, name: "Holz-Picke", stackable: false, isItem: true, power: 2, toolType: 'pickaxe', color: '#8a6a4a' }
+            grass: { id: 1, color: '#5d8c36', hardness: 0.6 },
+            dirt: { id: 2, color: '#553a26', hardness: 0.5 },
+            stone: { id: 3, color: '#777777', hardness: 1.5 },
+            log: { id: 4, color: '#4b3621', hardness: 1.0 },
+            leaves: { id: 5, color: '#2d5a27', hardness: 0.2 },
+            sand: { id: 6, color: '#d2b48c', hardness: 0.5 }
         };
 
-        const RECIPES = [
-            { input: [4, 0, 0, 0], output: { id: 6, count: 4 } },   
-            { input: [6, 0, 6, 0], output: { id: 10, count: 4 } },  
-            { input: [6, 6, 10, 0], output: { id: 11, count: 1 } } 
-        ];
-
-        // --- VARS ---
         let scene, camera, renderer, raycaster, clock;
-        let player, velocity, yaw = 0, pitch = 0;
-        let blocks = [];
-        let inventory = new Array(36).fill(null);
-        let craftingSlots = [0, 0, 0, 0];
-        let craftResult = null;
-        let hotbarIndex = 0;
-        let isMenuOpen = false;
-        let health = 20, hunger = 20;
-        let interactionTime = 0, isMining = false;
+        let player, velocity = new THREE.Vector3();
+        let blocks = [], inventory = new Array(30).fill(null); // 5 Hotbar + 25 Main
+        let hotbarIndex = 0, yaw = 0, pitch = 0;
+        let isMining = false, miningStart = 0, miningTarget = null;
         let canJump = false;
+        let health = 20, hunger = 20;
 
-        const input = { forward: 0, right: 0, jump: false };
-        
-        // Mobile Touch Vars
-        let joystickCenter = { x: 0, y: 0 };
-        let touchStartPos = { x: 0, y: 0 };
-        let isTouching = false;
-        let longPressTimer = null;
+        // Texturen Cache
+        const textureCache = {};
+
+        // Inputs
+        const moveInput = { x: 0, y: 0 };
+        let lookTouchId = null, lastLookPos = { x: 0, y: 0 };
+        let isMovingCamera = false;
+        let tapStartTime = 0;
+
+        // Drag & Drop Vars
+        let dragSrcIndex = -1;
+        let dragEl = document.getElementById('drag-helper');
 
         function init() {
+            // Start Button Handler
+            document.getElementById('start-btn').addEventListener('click', () => {
+                const el = document.documentElement;
+                if(el.requestFullscreen) el.requestFullscreen();
+                else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+                document.getElementById('start-screen').style.display = 'none';
+            });
+
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB);
-            scene.fog = new THREE.Fog(0x87CEEB, 20, 50);
+            scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.body.appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-            sun.position.set(10, 30, 10);
+            // Lighting setup for better shadows
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4)); // Weniger Ambient für Kontrast
+            const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+            sun.position.set(20, 50, 20);
+            sun.castShadow = true;
+            sun.shadow.mapSize.width = 1024;
+            sun.shadow.mapSize.height = 1024;
+            sun.shadow.camera.near = 0.5;
+            sun.shadow.camera.far = 100;
+            sun.shadow.camera.left = -30;
+            sun.shadow.camera.right = 30;
+            sun.shadow.camera.top = 30;
+            sun.shadow.camera.bottom = -30;
             scene.add(sun);
 
-            clock = new THREE.Clock();
             raycaster = new THREE.Raycaster();
-            velocity = new THREE.Vector3();
+            clock = new THREE.Clock();
 
-            setupTextures();
-            generateWorld();
-            
             player = new THREE.Group();
-            player.position.set(0, 20, 0);
+            player.position.set(0, 10, 0);
             scene.add(player);
             player.add(camera);
 
-            setupMobileControls();
+            generateTextures(); // Texturen vor Welt generieren
+            generateWorld();
             setupInventory();
+            setupControls();
+            
             animate();
         }
 
-        const textures = {};
-        function setupTextures() {
-            const createTex = (c) => {
+        // --- VISUALS ---
+        function generateTextures() {
+            const createTex = (colorHex) => {
+                const size = 64;
                 const canvas = document.createElement('canvas');
-                canvas.width = 16; canvas.height = 16;
+                canvas.width = size; canvas.height = size;
                 const ctx = canvas.getContext('2d');
-                for(let i=0; i<256; i++) {
-                    ctx.fillStyle = Math.random() > 0.5 ? c : c; // simplified
-                    ctx.fillRect(i%16, Math.floor(i/16), 1, 1);
+                
+                // Base Color
+                ctx.fillStyle = colorHex;
+                ctx.fillRect(0, 0, size, size);
+
+                // Noise
+                for(let i=0; i<400; i++) {
+                    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+                    const x = Math.random() * size;
+                    const y = Math.random() * size;
+                    ctx.fillRect(x, y, 2, 2);
                 }
-                const t = new THREE.CanvasTexture(canvas);
-                t.magFilter = THREE.NearestFilter;
-                return t;
+
+                // Border (damit man Blöcke unterscheidet)
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(0, 0, size, size);
+
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.magFilter = THREE.NearestFilter;
+                tex.minFilter = THREE.NearestFilter;
+                return tex;
             };
-            textures.grass_top = createTex('#5d8c36');
-            textures.dirt = createTex('#553a26');
-            textures.stone = createTex('#888');
+
+            Object.values(BLOCK_TYPES).forEach(type => {
+                if(type.id > 0) textureCache[type.id] = createTex(type.color);
+            });
         }
 
-        function getMat(id) {
-            if(id === 1) return [null,null,new THREE.MeshLambertMaterial({map: textures.grass_top}),new THREE.MeshLambertMaterial({map: textures.dirt}),null,null].map(m => m || new THREE.MeshLambertMaterial({map: textures.dirt}));
-            if(id === 2) return new THREE.MeshLambertMaterial({map: textures.dirt});
-            if(id === 3) return new THREE.MeshLambertMaterial({map: textures.stone});
-            const type = Object.values(BLOCK_TYPES).find(t => t.id === id);
-            return new THREE.MeshLambertMaterial({color: type?.color || '#fff'});
+        function getMaterial(id) {
+            return new THREE.MeshLambertMaterial({ map: textureCache[id] });
         }
 
         function generateWorld() {
             const simplex = new SimplexNoise();
-            for(let x = -10; x < 10; x++) {
-                for(let z = -10; z < 10; z++) {
-                    const h = Math.floor(simplex.noise2D(x/10, z/10) * 3) + 5;
+            for(let x = -8; x < 8; x++) {
+                for(let z = -8; z < 8; z++) {
+                    const h = Math.floor(simplex.noise2D(x/12, z/12) * 3) + 5;
                     for(let y = 0; y < h; y++) {
-                        createBlock(x, y, z, y === h-1 ? 1 : (y < h-3 ? 3 : 2));
+                        let id = 2; // Dirt
+                        if (y === h-1) id = 1; // Grass
+                        if (y < h-3) id = 3; // Stone
+                        if (y === 0) id = 3; // Bedrockish
+                        addBlock(x, y, z, id);
+                    }
+                    // Tree chance
+                    if(Math.random() > 0.98 && h > 4) createTree(x, h, z);
+                }
+            }
+        }
+
+        function createTree(x, y, z) {
+            for(let i=0; i<4; i++) addBlock(x, y+i, z, 4);
+            for(let lx=-1; lx<=1; lx++) {
+                for(let ly=0; ly<=1; ly++) {
+                    for(let lz=-1; lz<=1; lz++) {
+                        if(lx===0 && lz===0 && ly===0) continue;
+                        addBlock(x+lx, y+3+ly, z+lz, 5);
                     }
                 }
             }
         }
 
-        function createBlock(x, y, z, id) {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), getMat(id));
+        function addBlock(x, y, z, id) {
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), getMaterial(id));
             mesh.position.set(x, y, z);
             mesh.userData.typeId = id;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
             scene.add(mesh);
             blocks.push(mesh);
         }
 
-        // --- MOBILE STEERING ---
-        function setupMobileControls() {
-            const joy = document.getElementById('joystick-container');
-            const knob = document.getElementById('joystick-knob');
+        // --- CONTROLS & PHYSICS ---
+        function setupControls() {
+            const joyBase = document.getElementById('joy-base');
+            const joyKnob = document.getElementById('joy-knob');
 
-            joy.addEventListener('touchstart', (e) => {
-                const rect = joy.getBoundingClientRect();
-                joystickCenter = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-            });
-
-            joy.addEventListener('touchmove', (e) => {
+            joyBase.addEventListener('touchmove', (e) => {
                 e.preventDefault();
                 const touch = e.touches[0];
-                let dx = touch.clientX - joystickCenter.x;
-                let dy = touch.clientY - joystickCenter.y;
-                const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
+                const rect = joyBase.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const dx = touch.clientX - centerX;
+                const dy = touch.clientY - centerY;
+                const dist = Math.min(Math.sqrt(dx*dx+dy*dy), 40);
                 const angle = Math.atan2(dy, dx);
-                
-                const moveX = Math.cos(angle) * dist;
-                const moveY = Math.sin(angle) * dist;
-                
-                knob.style.transform = `translate(${moveX}px, ${moveY}px)`;
-                
-                input.right = dx / 50;
-                input.forward = -dy / 50;
+                joyKnob.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+                moveInput.x = (Math.cos(angle) * dist) / 40;
+                moveInput.y = -(Math.sin(angle) * dist) / 40;
             });
 
-            joy.addEventListener('touchend', () => {
-                knob.style.transform = `translate(0px, 0px)`;
-                input.forward = 0; input.right = 0;
+            joyBase.addEventListener('touchend', () => {
+                joyKnob.style.transform = 'translate(0,0)';
+                moveInput.x = 0; moveInput.y = 0;
             });
 
-            // Umsehen & Aktionen (rechter Bereich)
             window.addEventListener('touchstart', (e) => {
+                // Ignore HUD touches for look
+                if(e.target.closest('#joy-base') || e.target.closest('#action-area') || e.target.closest('#inv-overlay') || e.target.closest('#hud')) return;
+
                 const touch = e.touches[0];
-                if(touch.clientX > window.innerWidth / 2) {
-                    touchStartPos = { x: touch.clientX, y: touch.clientY };
+                if (touch.clientX > window.innerWidth / 3) {
+                    lookTouchId = touch.identifier;
+                    lastLookPos = { x: touch.clientX, y: touch.clientY };
+                    isMovingCamera = false;
+                    tapStartTime = Date.now();
                     
-                    // Langes Drücken zum Abbauen
-                    longPressTimer = setTimeout(() => {
-                        isMining = true;
-                        interactionTime = Date.now();
-                    }, 400);
+                    clearTimeout(window.miningTimer);
+                    window.miningTimer = setTimeout(() => {
+                        if (!isMovingCamera) startMining();
+                    }, 350);
                 }
             }, { passive: false });
 
             window.addEventListener('touchmove', (e) => {
-                const touch = e.touches[0];
-                if(touch.clientX > window.innerWidth / 2) {
-                    const dx = touch.clientX - touchStartPos.x;
-                    const dy = touch.clientY - touchStartPos.y;
-                    
-                    if(Math.abs(dx) > 5 || Math.abs(dy) > 5) clearTimeout(longPressTimer);
-                    
-                    yaw -= dx * 0.005;
-                    pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch - dy * 0.005));
-                    player.rotation.y = yaw;
-                    camera.rotation.x = pitch;
-                    
-                    touchStartPos = { x: touch.clientX, y: touch.clientY };
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const t = e.changedTouches[i];
+                    if (t.identifier === lookTouchId) {
+                        const dx = t.clientX - lastLookPos.x;
+                        const dy = t.clientY - lastLookPos.y;
+                        
+                        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+                            isMovingCamera = true;
+                            clearTimeout(window.miningTimer);
+                            stopMining();
+                        }
+
+                        yaw -= dx * 0.005;
+                        pitch -= dy * 0.005;
+                        pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+                        
+                        player.rotation.y = yaw;
+                        camera.rotation.x = pitch;
+                        lastLookPos = { x: t.clientX, y: t.clientY };
+                    }
                 }
             });
 
             window.addEventListener('touchend', (e) => {
-                const touch = e.changedTouches[0];
-                clearTimeout(longPressTimer);
-                
-                if(isMining) {
-                    isMining = false;
-                    document.getElementById('mining-progress').style.display = 'none';
-                } else if(touch.clientX > window.innerWidth / 2 && !isMenuOpen) {
-                    // Kurzes Tippen -> Block setzen
-                    performAction(false);
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === lookTouchId) {
+                        clearTimeout(window.miningTimer);
+                        if (!isMovingCamera && Date.now() - tapStartTime < 300) placeBlock();
+                        stopMining();
+                        lookTouchId = null;
+                    }
                 }
             });
 
-            document.getElementById('btn-jump').addEventListener('touchstart', () => input.jump = true);
-            document.getElementById('btn-jump').addEventListener('touchend', () => input.jump = false);
-            document.getElementById('btn-inv').addEventListener('touchstart', toggleMenu);
+            document.getElementById('btn-jump').addEventListener('touchstart', () => { if (canJump) velocity.y = 0.13; });
+            document.getElementById('btn-inv').addEventListener('touchstart', toggleInv);
         }
 
-        // --- INVENTORY ---
-        function setupInventory() {
-            addItem(4, 10); // Startholz
-            updateUI();
-        }
-
-        function addItem(id, count = 1) {
-            const type = Object.values(BLOCK_TYPES).find(t => t.id === id);
-            let slot = inventory.find(s => s && s.id === id && s.count < 64);
-            if(type.stackable && slot) { slot.count += count; }
-            else {
-                let empty = inventory.findIndex(s => s === null);
-                if(empty !== -1) inventory[empty] = { id, count };
-            }
-            updateUI();
-        }
-
-        function toggleMenu() {
-            isMenuOpen = !isMenuOpen;
-            document.getElementById('menu-overlay').style.display = isMenuOpen ? 'flex' : 'none';
-            updateUI();
-        }
-
-        function updateUI() {
-            const hb = document.getElementById('hotbar');
-            hb.innerHTML = '';
-            for(let i=0; i<9; i++) {
-                const item = inventory[i];
-                const active = i === hotbarIndex;
-                hb.innerHTML += `<div class="slot ${active?'active':''}" onclick="setHotbar(${i})">${item ? renderIcon(item.id) : ''}${item && item.count > 1 ? `<span class="count">${item.count}</span>` : ''}</div>`;
-            }
-
-            if(isMenuOpen) {
-                const inv = document.getElementById('main-inventory');
-                inv.innerHTML = inventory.map((item, i) => `<div class="slot" onclick="clickInv(${i})">${item ? renderIcon(item.id) : ''}${item && item.count > 1 ? `<span class="count">${item.count}</span>` : ''}</div>`).join('');
-                
-                const cGrid = document.getElementById('crafting-grid');
-                cGrid.innerHTML = craftingSlots.map((id, i) => `<div class="slot" onclick="clearCraft(${i})">${id > 0 ? renderIcon(id) : ''}</div>`).join('');
-                
-                const res = document.getElementById('craft-result');
-                res.innerHTML = craftResult ? renderIcon(craftResult.id) + (craftResult.count > 1 ? `<span class="count">${craftResult.count}</span>` : '') : '';
-            }
-        }
-
-        window.setHotbar = (i) => { hotbarIndex = i; updateUI(); };
-        window.clickInv = (i) => {
-            const item = inventory[i];
-            if(!item) return;
-            let cIdx = craftingSlots.findIndex(s => s === 0);
-            if(cIdx !== -1) {
-                craftingSlots[cIdx] = item.id;
-                item.count--; if(item.count <= 0) inventory[i] = null;
-                checkRecipes(); updateUI();
-            }
-        };
-        window.clearCraft = (i) => { craftingSlots[i] = 0; checkRecipes(); updateUI(); };
-
-        function checkRecipes() {
-            craftResult = null;
-            const match = RECIPES.find(r => JSON.stringify(r.input) === JSON.stringify(craftingSlots));
-            if(match) craftResult = {...match.output};
-        }
-
-        window.takeCraftResult = () => {
-            if(craftResult && addItem(craftResult.id, craftResult.count)) {
-                craftingSlots = [0,0,0,0]; craftResult = null; updateUI();
-            }
-        };
-
-        function renderIcon(id) {
-            const type = Object.values(BLOCK_TYPES).find(t => t.id === id);
-            return `<div class="icon" style="background: ${type?.color || '#fff'}"></div>`;
-        }
-
-        // --- GAME LOOP ---
-        function performAction(isDestroy) {
+        function startMining() {
             raycaster.setFromCamera({x:0, y:0}, camera);
             const hits = raycaster.intersectObjects(blocks);
-            if(hits.length > 0 && hits[0].distance < 5) {
-                const h = hits[0];
-                if(isDestroy) {
-                    addItem(h.object.userData.typeId, 1);
-                    scene.remove(h.object);
-                    blocks = blocks.filter(b => b !== h.object);
-                } else {
-                    const item = inventory[hotbarIndex];
-                    if(!item || BLOCK_TYPES[Object.keys(BLOCK_TYPES).find(k => BLOCK_TYPES[k].id === item.id)].isItem) return;
-                    const pos = h.object.position.clone().add(h.face.normal);
-                    if(pos.distanceTo(player.position) > 1.2) {
-                        createBlock(pos.x, pos.y, pos.z, item.id);
-                        item.count--; if(item.count <= 0) inventory[hotbarIndex] = null;
-                        updateUI();
-                    }
+            if (hits.length > 0 && hits[0].distance < 4.5) {
+                isMining = true;
+                miningStart = Date.now();
+                miningTarget = hits[0].object;
+                document.getElementById('mining-progress').style.display = 'block';
+            }
+        }
+
+        function stopMining() {
+            isMining = false; miningTarget = null;
+            document.getElementById('mining-progress').style.display = 'none';
+        }
+
+        function placeBlock() {
+            raycaster.setFromCamera({x:0, y:0}, camera);
+            const hits = raycaster.intersectObjects(blocks);
+            if (hits.length > 0 && hits[0].distance < 4.5) {
+                const item = inventory[hotbarIndex];
+                if (!item) return;
+                const pos = hits[0].object.position.clone().add(hits[0].face.normal);
+                // Simple collision check
+                if(pos.distanceTo(player.position) > 1.2) {
+                    addBlock(pos.x, pos.y, pos.z, item.id);
                 }
             }
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            const d = clock.getDelta();
-            
-            if(!isMenuOpen) {
-                // Physics
-                velocity.y -= 0.01;
-                player.translateZ(input.forward * 0.1);
-                player.translateX(input.right * 0.1);
-                
-                player.position.y += velocity.y;
-                raycaster.set(player.position, new THREE.Vector3(0,-1,0));
-                const g = raycaster.intersectObjects(blocks);
-                if(g.length > 0 && g[0].distance < 1.6) {
-                    player.position.y += 1.6 - g[0].distance;
-                    velocity.y = 0; canJump = true;
-                }
-                if(input.jump && canJump) { velocity.y = 0.15; canJump = false; }
+            const delta = clock.getDelta();
 
-                // Survival
-                hunger = Math.max(0, hunger - 0.005 * d);
-                document.getElementById('health-fill').style.width = (health/20 * 100) + '%';
-                document.getElementById('hunger-fill').style.width = (hunger/20 * 100) + '%';
+            velocity.y -= 0.009; // Gravity
+            player.translateZ(-moveInput.y * 0.1);
+            player.translateX(moveInput.x * 0.1);
+            player.position.y += velocity.y;
 
-                // Mining
-                if(isMining) {
-                    raycaster.setFromCamera({x:0,y:0}, camera);
-                    const hs = raycaster.intersectObjects(blocks);
-                    if(hs.length > 0 && hs[0].distance < 5) {
-                        const elapsed = Date.now() - interactionTime;
-                        const prog = document.getElementById('mining-progress'); prog.style.display = 'block';
-                        const type = Object.values(BLOCK_TYPES).find(t => t.id === hs[0].object.userData.typeId);
-                        const p = Math.min(elapsed / (type.hardness * 1000), 1);
-                        document.getElementById('mining-bar').style.width = (p*100)+'%';
-                        if(p >= 1) { performAction(true); isMining = false; prog.style.display='none'; }
-                    }
+            // Ground check
+            raycaster.set(player.position, new THREE.Vector3(0,-1,0));
+            const ground = raycaster.intersectObjects(blocks);
+            if (ground.length > 0 && ground[0].distance < 1.6) {
+                player.position.y += 1.6 - ground[0].distance;
+                velocity.y = 0; canJump = true;
+            } else { canJump = false; }
+
+            // Mining progress
+            if (isMining && miningTarget) {
+                const type = Object.values(BLOCK_TYPES).find(b => b.id === miningTarget.userData.typeId);
+                const progress = (Date.now() - miningStart) / (type.hardness * 1000);
+                document.getElementById('mining-bar').style.width = Math.min(progress*100, 100) + '%';
+                if (progress >= 1) {
+                    // Drop item (simplified: add to inv if space)
+                    addItemToInv(miningTarget.userData.typeId, 1);
+                    scene.remove(miningTarget);
+                    blocks = blocks.filter(b => b !== miningTarget);
+                    stopMining();
                 }
             }
             renderer.render(scene, camera);
+        }
+
+        // --- INVENTORY LOGIC ---
+        function setupInventory() {
+            // Start Items
+            inventory[0] = { id: 1, count: 64 };
+            inventory[1] = { id: 2, count: 64 };
+            inventory[2] = { id: 3, count: 64 };
+            inventory[3] = { id: 4, count: 64 };
+            inventory[4] = { id: 5, count: 64 };
+            updateUI();
+        }
+
+        function addItemToInv(id, count) {
+             // Stack logic omitted for brevity, just find empty
+            let type = Object.values(BLOCK_TYPES).find(t=>t.id===id);
+            // Try stack
+            let existing = inventory.find(i => i && i.id === id);
+            if(existing) { existing.count += count; }
+            else {
+                let empty = inventory.findIndex(i => i === null);
+                if(empty !== -1) inventory[empty] = { id, count };
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            const hb = document.getElementById('hotbar');
+            hb.innerHTML = '';
+            // Hotbar (Slots 0-4)
+            for(let i=0; i<5; i++) {
+                const item = inventory[i];
+                hb.innerHTML += `<div class="slot ${i===hotbarIndex?'active':''}" onmousedown="setHotbar(${i})" ontouchstart="setHotbar(${i})">${item ? renderItem(item) : ''}</div>`;
+            }
+
+            // Inventory Grid (All Slots)
+            const invGrid = document.getElementById('inv-grid');
+            if(document.getElementById('inv-overlay').style.display === 'flex') {
+                invGrid.innerHTML = '';
+                inventory.forEach((item, i) => {
+                    const slot = document.createElement('div');
+                    slot.className = 'slot';
+                    if(i < 5) slot.style.borderColor = '#5f5'; // Highlight Hotbar slots in grid
+                    slot.innerHTML = item ? renderItem(item) : '';
+                    
+                    // Drag Events
+                    slot.addEventListener('touchstart', (e) => handleDragStart(e, i));
+                    slot.addEventListener('mousedown', (e) => handleDragStart(e, i));
+                    
+                    invGrid.appendChild(slot);
+                });
+            }
+        }
+
+        function renderItem(item) {
+            const type = Object.values(BLOCK_TYPES).find(t => t.id === item.id);
+            return `<div class="icon" style="background:${type.color}"></div><span class="count">${item.count}</span>`;
+        }
+
+        function setHotbar(i) { hotbarIndex = i; updateUI(); }
+
+        function toggleInv() {
+            const el = document.getElementById('inv-overlay');
+            el.style.display = el.style.display === 'flex' ? 'none' : 'flex';
+            updateUI();
+        }
+
+        // --- DRAG AND DROP ---
+        function handleDragStart(e, index) {
+            if(!inventory[index]) return;
+            e.preventDefault(); // Prevent scroll
+            dragSrcIndex = index;
+            
+            const item = inventory[index];
+            dragEl.innerHTML = renderItem(item);
+            dragEl.style.display = 'block';
+            
+            const touch = e.touches ? e.touches[0] : e;
+            updateDragPos(touch.clientX, touch.clientY);
+
+            const moveHandler = (moveE) => {
+                const t = moveE.touches ? moveE.touches[0] : moveE;
+                updateDragPos(t.clientX, t.clientY);
+            };
+
+            const endHandler = (endE) => {
+                const t = endE.changedTouches ? endE.changedTouches[0] : endE;
+                dragEl.style.display = 'none';
+                
+                // Find drop target
+                const target = document.elementFromPoint(t.clientX, t.clientY);
+                const slotDiv = target.closest('.slot');
+                if(slotDiv && invGridContains(slotDiv)) {
+                    // Simple hack: find index by counting children
+                    const children = Array.from(document.getElementById('inv-grid').children);
+                    const targetIndex = children.indexOf(slotDiv);
+                    if(targetIndex !== -1 && targetIndex !== dragSrcIndex) {
+                        // Swap
+                        const temp = inventory[targetIndex];
+                        inventory[targetIndex] = inventory[dragSrcIndex];
+                        inventory[dragSrcIndex] = temp;
+                        updateUI();
+                    }
+                }
+
+                document.removeEventListener('touchmove', moveHandler);
+                document.removeEventListener('touchend', endHandler);
+                document.removeEventListener('mousemove', moveHandler);
+                document.removeEventListener('mouseup', endHandler);
+            };
+
+            document.addEventListener('touchmove', moveHandler, {passive: false});
+            document.addEventListener('touchend', endHandler);
+            document.addEventListener('mousemove', moveHandler);
+            document.addEventListener('mouseup', endHandler);
+        }
+
+        function updateDragPos(x, y) {
+            dragEl.style.left = (x - 25) + 'px';
+            dragEl.style.top = (y - 25) + 'px';
+        }
+
+        function invGridContains(el) {
+            return document.getElementById('inv-grid').contains(el);
         }
 
         window.addEventListener('resize', () => {
@@ -570,4 +697,3 @@
     </script>
 </body>
 </html>
-
