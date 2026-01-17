@@ -3,326 +3,340 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Walkie-Talkie Ultimate</title>
+    <title>Walkie-Talkie Broadcast</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
         
         body {
-            background-color: #121212;
+            background-color: #0f172a;
             touch-action: manipulation;
-            font-family: 'Segoe UI', sans-serif;
+            font-family: ui-sans-serif, system-ui, sans-serif;
         }
 
         .lcd-screen {
             font-family: 'Orbitron', sans-serif;
-            background-color: #a8c6a8;
-            color: #1a2e1a;
-            box-shadow: inset 0 0 15px rgba(0,0,0,0.4);
+            background-color: #8fb397;
+            color: #061a06;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+            border: 4px solid #1e293b;
         }
 
         .ptt-btn {
-            background: radial-gradient(circle, #444, #222);
-            transition: all 0.1s ease;
+            background: linear-gradient(145deg, #3f3f46, #18181b);
+            box-shadow: 5px 5px 15px #09090b, -2px -2px 10px #3f3f46;
         }
 
         .ptt-active {
-            background: radial-gradient(circle, #ff4444, #991111) !important;
-            box-shadow: 0 0 40px rgba(239, 68, 68, 0.5);
+            background: radial-gradient(circle, #ef4444, #7f1d1d) !important;
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
             transform: scale(0.96);
         }
 
-        .overlay {
-            backdrop-filter: blur(8px);
-            display: none;
+        .overlay { backdrop-filter: blur(12px); display: none; }
+        
+        /* Animation für Funkwellen */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            100% { transform: scale(1.5); opacity: 0; }
         }
-
-        .no-select {
-            -webkit-tap-highlight-color: transparent;
-            user-select: none;
+        .transmitting::before {
+            content: '';
+            position: absolute;
+            width: 100%; height: 100%;
+            border-radius: 50%;
+            border: 4px solid #ef4444;
+            animation: pulse-ring 1.5s infinite;
         }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
 
-    <div class="w-full max-w-sm bg-zinc-900 p-8 rounded-[3.5rem] border-[10px] border-zinc-800 shadow-2xl relative overflow-hidden">
+    <div class="w-full max-w-sm bg-slate-900 p-8 rounded-[3.5rem] border-[12px] border-slate-800 shadow-2xl relative">
         
-        <!-- Deko: Antenne & Regler -->
-        <div class="absolute -top-10 left-12 w-4 h-20 bg-zinc-800 rounded-full"></div>
-        <div class="absolute top-4 right-10 w-8 h-4 bg-zinc-700 rounded-sm shadow-inner"></div>
+        <!-- Antenne -->
+        <div class="absolute -top-12 left-10 w-5 h-24 bg-gradient-to-b from-slate-700 to-slate-800 rounded-t-full border-x-2 border-slate-900"></div>
 
-        <!-- Header mit Settings Button -->
+        <!-- Header -->
         <div class="flex justify-between items-center mb-4">
-            <span class="text-zinc-500 text-[10px] font-bold tracking-widest">VHF TRANSCEIVER</span>
-            <button id="open-settings" class="text-zinc-400 hover:text-white transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            <div class="flex flex-col">
+                <span class="text-slate-500 text-[10px] font-black tracking-tighter">BROADCAST UNIT</span>
+                <span id="online-count" class="text-blue-400 text-[9px] font-bold">0 Teilnehmer online</span>
+            </div>
+            <button id="open-settings" class="bg-slate-800 p-2 rounded-full text-slate-400 hover:text-white transition-all">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
         </div>
 
         <!-- LCD Display -->
-        <div class="lcd-screen w-full p-4 rounded-xl mb-6 border-4 border-black/20">
-            <div class="flex justify-between items-center text-[10px] font-bold opacity-70">
-                <span id="display-mode-text">FM MODE</span>
-                <span id="status-text">● RX/TX</span>
+        <div class="lcd-screen w-full p-4 rounded-xl mb-6 relative overflow-hidden">
+            <div class="flex justify-between text-[10px] font-bold opacity-60">
+                <span>CHANNEL SCAN</span>
+                <span id="status-text">WAITING</span>
             </div>
-            <div class="text-5xl font-bold text-center my-3 tracking-tighter">
-                <span class="text-2xl">CH</span><span id="display-channel">01</span>
+            <div class="text-5xl font-bold text-center my-2 flex items-center justify-center">
+                <span class="text-xl mr-1">CH</span><span id="display-channel">01</span>
             </div>
-            <div class="flex justify-between items-center text-[9px] font-bold mt-2">
-                <div class="flex gap-1" id="signal-bars">
-                    <div class="w-1 h-2 bg-black/40"></div><div class="w-1 h-3 bg-black/40"></div><div class="w-1 h-4 bg-black"></div>
+            <div class="flex justify-between items-end text-[9px] font-bold">
+                <div class="flex gap-0.5" id="signal-meter">
+                    <div class="w-1.5 h-2 bg-black/20"></div><div class="w-1.5 h-3 bg-black/20"></div><div class="w-1.5 h-4 bg-black/20"></div><div class="w-1.5 h-5 bg-black/20"></div>
                 </div>
-                <div id="display-name" class="truncate max-w-[120px]">USER: INITIALIZING...</div>
+                <div id="display-name" class="uppercase text-right truncate max-w-[150px]">NAME: ---</div>
             </div>
+            <!-- Hintergrund Raster-Effekt -->
+            <div class="absolute inset-0 pointer-events-none opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:4px_4px]"></div>
         </div>
 
-        <!-- Haupt-Interface -->
+        <!-- Buttons -->
         <div class="flex flex-col items-center gap-8">
-            <div class="flex gap-4 w-full">
-                <button id="call-btn" class="flex-1 bg-zinc-800 border-b-4 border-zinc-950 text-blue-400 p-3 rounded-2xl text-xs font-black shadow-lg active:border-b-0 active:translate-y-1 transition-all">
-                    🔔 ALERT
-                </button>
-                <div class="flex-1 flex flex-col justify-center px-2">
-                    <span class="text-[8px] text-zinc-500 uppercase font-black">Volume</span>
-                    <div class="h-1.5 w-full bg-zinc-800 rounded-full mt-1">
-                        <div class="h-full w-2/3 bg-blue-500 rounded-full"></div>
-                    </div>
-                </div>
-            </div>
+            <button id="call-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-black text-xs tracking-widest shadow-lg transform active:translate-y-1 transition-all">
+                🔔 SEND ALERT TO ALL
+            </button>
 
-            <div class="relative group">
-                <button id="ptt-btn" class="no-select w-36 h-36 rounded-full ptt-btn border-[12px] border-zinc-800 text-white font-black text-2xl flex items-center justify-center shadow-2xl">
+            <div id="ptt-container" class="relative">
+                <button id="ptt-btn" class="ptt-btn w-40 h-40 rounded-full border-[10px] border-slate-800 text-slate-400 font-black text-2xl flex items-center justify-center shadow-inner no-select transition-all">
                     PTT
                 </button>
-                <div class="absolute -bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
-                    <div id="tx-led" class="w-2 h-2 rounded-full bg-zinc-700 mb-1"></div>
-                    <span class="text-[9px] text-zinc-500 font-bold tracking-widest uppercase">Push To Talk</span>
+                <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center">
+                    <div id="tx-indicator" class="w-3 h-3 rounded-full bg-slate-700 shadow-[0_0_10px_rgba(0,0,0,0.5)] transition-all"></div>
+                    <span class="text-[8px] text-slate-500 font-bold mt-1">TRANSMIT</span>
                 </div>
             </div>
         </div>
 
-        <!-- Lautsprecher-Optik -->
-        <div class="mt-12 flex flex-col gap-1.5 opacity-30">
-            <div class="flex justify-center gap-1.5"><div class="w-12 h-1 bg-black rounded-full"></div><div class="w-20 h-1 bg-black rounded-full"></div><div class="w-12 h-1 bg-black rounded-full"></div></div>
-            <div class="flex justify-center gap-1.5"><div class="w-16 h-1 bg-black rounded-full"></div><div class="w-24 h-1 bg-black rounded-full"></div><div class="w-16 h-1 bg-black rounded-full"></div></div>
-            <div class="flex justify-center gap-1.5"><div class="w-12 h-1 bg-black rounded-full"></div><div class="w-20 h-1 bg-black rounded-full"></div><div class="w-12 h-1 bg-black rounded-full"></div></div>
+        <!-- Speaker Grill -->
+        <div class="mt-14 flex flex-col items-center gap-1.5 opacity-20">
+            <div class="w-3/4 h-1 bg-black rounded-full"></div>
+            <div class="w-full h-1 bg-black rounded-full"></div>
+            <div class="w-3/4 h-1 bg-black rounded-full"></div>
         </div>
     </div>
 
-    <!-- SETTINGS OVERLAY -->
+    <!-- SETTINGS -->
     <div id="settings-overlay" class="overlay fixed inset-0 z-50 flex items-center justify-center p-6">
-        <div class="bg-zinc-900 w-full max-w-xs rounded-3xl border-2 border-zinc-700 p-6 shadow-2xl">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-white font-bold text-xl">Einstellungen</h2>
-                <button id="close-settings" class="text-zinc-500 hover:text-white">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-            </div>
-
-            <div class="space-y-4">
+        <div class="bg-slate-900 w-full max-w-xs rounded-3xl border border-slate-700 p-8 shadow-2xl">
+            <h2 class="text-white font-bold text-2xl mb-6">Setup</h2>
+            
+            <div class="space-y-5">
                 <div>
-                    <label class="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Dein Rufname (ID)</label>
-                    <input type="text" id="input-username" class="w-full bg-zinc-800 text-white p-3 rounded-xl border border-zinc-700 focus:outline-none focus:border-blue-500 transition-colors" placeholder="z.B. Adler-1">
+                    <label class="text-slate-500 text-[10px] uppercase font-black block mb-2">Rufname (ID)</label>
+                    <input type="text" id="input-username" maxlength="15" class="w-full bg-slate-800 text-white p-4 rounded-xl border border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all">
                 </div>
 
                 <div>
-                    <label class="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Kanal wählen</label>
-                    <select id="input-channel" class="w-full bg-zinc-800 text-white p-3 rounded-xl border border-zinc-700 focus:outline-none">
-                        <!-- JS filled -->
-                    </select>
+                    <label class="text-slate-500 text-[10px] uppercase font-black block mb-2">Kanal</label>
+                    <select id="input-channel" class="w-full bg-slate-800 text-white p-4 rounded-xl border border-slate-700 outline-none appearance-none"></select>
                 </div>
 
                 <div>
-                    <label class="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Klingelton-Frequenz (Hz)</label>
-                    <div class="flex items-center gap-3">
-                        <input type="range" id="input-ring-freq" min="200" max="2000" step="10" class="flex-1 accent-blue-500">
-                        <span id="val-ring-freq" class="text-white text-xs w-12 font-mono">660</span>
+                    <div class="flex justify-between mb-2">
+                        <label class="text-slate-500 text-[10px] uppercase font-black">Alarm-Tonhöhe</label>
+                        <span id="val-freq" class="text-blue-400 font-mono text-xs">660Hz</span>
                     </div>
+                    <input type="range" id="input-freq" min="300" max="1500" step="50" class="w-full accent-blue-500">
                 </div>
 
-                <div class="pt-4">
-                    <button id="save-settings" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold p-3 rounded-xl shadow-lg transition-all active:scale-95">
-                        SPEICHERN & RESTART
-                    </button>
-                </div>
+                <button id="save-settings" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-xl transition-all active:scale-95 mt-4">
+                    ÜBERNEHMEN
+                </button>
             </div>
         </div>
     </div>
 
     <script>
-        // --- CONFIG & STATE ---
-        const CHANNEL_PREFIX = "WALKIE_V3_";
+        // --- DATA & STATE ---
+        const APP_ID = "WALKIE_BROADCAST_V1";
         let state = {
-            username: localStorage.getItem('wt_name') || "OPERATOR-" + Math.floor(Math.random()*999),
+            name: localStorage.getItem('wt_name') || "User" + Math.floor(Math.random()*99),
             channel: localStorage.getItem('wt_chan') || "01",
-            ringFreq: parseInt(localStorage.getItem('wt_freq')) || 660,
-            mode: 'clean'
+            freq: parseInt(localStorage.getItem('wt_freq')) || 660,
+            peersOnChannel: new Set()
         };
 
         let peer = null;
         let localStream = null;
-        let activeCall = null;
+        let activeCalls = [];
         let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-        // --- DOM ELEMENTS ---
-        const overlay = document.getElementById('settings-overlay');
-        const displayChan = document.getElementById('display-channel');
-        const displayName = document.getElementById('display-name');
+        // --- DOM ---
         const pttBtn = document.getElementById('ptt-btn');
-        const txLed = document.getElementById('tx-led');
-        const chanSelect = document.getElementById('input-channel');
-        const freqSlider = document.getElementById('input-ring-freq');
+        const pttContainer = document.getElementById('ptt-container');
+        const txIndicator = document.getElementById('tx-indicator');
+        const overlay = document.getElementById('settings-overlay');
+        const chanDisplay = document.getElementById('display-channel');
+        const nameDisplay = document.getElementById('display-name');
+        const onlineDisplay = document.getElementById('online-count');
+        const statusText = document.getElementById('status-text');
 
-        // Init Channel Select
-        for(let i=0; i<=99; i++){
+        // Init Channel UI
+        const cSelect = document.getElementById('input-channel');
+        for(let i=1; i<=20; i++) {
             const v = i.toString().padStart(2, '0');
-            chanSelect.innerHTML += `<option value="${v}">CH ${v}</option>`;
+            cSelect.innerHTML += `<option value="${v}">Frequenz ${v}</option>`;
         }
 
-        // --- AUDIO ENGINE ---
-        function playBip(type) {
+        // --- CORE FUNCTIONS ---
+        function playLocalSound(f, duration = 0.3) {
             const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            if (type === 'ring') {
-                const freq = state.ringFreq;
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-                osc.frequency.setValueAtTime(freq * 1.5, audioCtx.currentTime + 0.1);
-                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + 0.2);
-                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.4);
-            } else if (type === 'roger') {
-                osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(500, audioCtx.currentTime + 0.05);
-                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.05);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.05);
-            }
+            const g = audioCtx.createGain();
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.frequency.setValueAtTime(f, audioCtx.currentTime);
+            g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.start(); osc.stop(audioCtx.currentTime + duration);
         }
 
-        // --- PEER CORE ---
-        function startNetwork() {
+        function initNetwork() {
             if (peer) peer.destroy();
+            state.peersOnChannel.clear();
+            updateOnlineDisplay();
             
-            // Die ID setzt sich aus Prefix + Kanal + Username zusammen
-            const fullId = `${CHANNEL_PREFIX}${state.channel}_${state.username}`;
-            peer = new Peer(fullId);
+            // ID Format: APP_CH_NAME
+            const myId = `${APP_ID}_${state.channel}_${state.name}`;
+            peer = new Peer(myId);
 
             peer.on('open', (id) => {
-                displayName.innerText = `ID: ${state.username}`;
-                displayChan.innerText = state.channel;
+                nameDisplay.innerText = `NAME: ${state.name}`;
+                chanDisplay.innerText = state.channel;
+                statusText.innerText = "READY";
+                // "Hello" Signal an alle schicken (Broadcast Simulation)
+                broadcastSignal({ type: 'PRESENCE' });
+            });
+
+            peer.on('connection', (conn) => {
+                conn.on('data', (data) => {
+                    handleSignal(data, conn.peer);
+                });
             });
 
             peer.on('call', (call) => {
-                // Nur Calls vom selben Kanal annehmen
-                if (call.peer.startsWith(`${CHANNEL_PREFIX}${state.channel}`)) {
-                    txLed.style.backgroundColor = '#22c55e'; // Green for RX
+                // Nur annehmen, wenn gleicher Kanal
+                if (call.peer.includes(`_${state.channel}_`)) {
+                    statusText.innerText = "RX...";
+                    txIndicator.style.backgroundColor = "#22c55e";
                     call.answer();
-                    call.on('stream', (stream) => {
-                        const audio = new Audio();
-                        audio.srcObject = stream;
-                        audio.play();
+                    call.on('stream', (s) => {
+                        const a = new Audio(); a.srcObject = s; a.play();
                     });
                     call.on('close', () => {
-                        txLed.style.backgroundColor = '';
-                        playBip('roger');
+                        txIndicator.style.backgroundColor = "";
+                        statusText.innerText = "READY";
+                        playLocalSound(440, 0.1); // Roger-Beep
                     });
                 }
             });
+        }
 
-            // Klingelton Empfang
-            peer.on('connection', (conn) => {
-                conn.on('data', (data) => {
-                    if (data.type === 'ALERT') {
-                        // Wir spielen den Sound ab, den der Sender konfiguriert hat!
-                        const tempFreq = data.freq || 660;
-                        const osc = audioCtx.createOscillator();
-                        const g = audioCtx.createGain();
-                        osc.connect(g); g.connect(audioCtx.destination);
-                        osc.frequency.setValueAtTime(tempFreq, audioCtx.currentTime);
-                        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
-                    }
+        function handleSignal(data, senderId) {
+            const [app, chan, name] = senderId.split('_');
+            if (chan !== state.channel) return;
+
+            if (data.type === 'PRESENCE') {
+                state.peersOnChannel.add(senderId);
+                updateOnlineDisplay();
+                // Antwort schicken, damit der neue uns auch kennt
+                const conn = peer.connect(senderId);
+                conn.on('open', () => conn.send({ type: 'ACK' }));
+            } else if (data.type === 'ACK') {
+                state.peersOnChannel.add(senderId);
+                updateOnlineDisplay();
+            } else if (data.type === 'ALERT') {
+                playLocalSound(data.freq, 0.5);
+                statusText.innerText = "ALERT!";
+                setTimeout(() => statusText.innerText = "READY", 2000);
+            }
+        }
+
+        function broadcastSignal(data) {
+            // In einer echten Cloud-Umgebung würden wir hier eine Liste abrufen.
+            // In dieser Demo simulieren wir das, indem wir bekannte Peers "anfunken".
+            state.peersOnChannel.forEach(pId => {
+                const conn = peer.connect(pId);
+                conn.on('open', () => {
+                    conn.send(data);
+                    setTimeout(() => conn.close(), 500);
                 });
             });
         }
 
-        // --- TRANSMISSION ---
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(s => localStream = s);
-
-        function startTX() {
-            if (!localStream) return;
-            pttBtn.classList.add('ptt-active');
-            txLed.style.backgroundColor = '#ef4444'; // Red for TX
-            
-            const partner = prompt("Ziel-Partner ID (z.B. Adler-1):");
-            if (partner) {
-                const target = `${CHANNEL_PREFIX}${state.channel}_${partner}`;
-                activeCall = peer.call(target, localStream);
+        function updateOnlineDisplay() {
+            onlineDisplay.innerText = `${state.peersOnChannel.size} Teilnehmer online`;
+            // Signal Bars simulieren
+            const bars = document.getElementById('signal-meter').children;
+            for(let i=0; i<bars.length; i++) {
+                bars[i].style.backgroundColor = i < state.peersOnChannel.size + 1 ? 'black' : 'rgba(0,0,0,0.1)';
             }
         }
 
-        function stopTX() {
-            pttBtn.classList.remove('ptt-active');
-            txLed.style.backgroundColor = '';
-            if (activeCall) activeCall.close();
-            playBip('roger');
+        // --- TRANSMIT ---
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(s => localStream = s);
+
+        function startTransmit() {
+            if (!localStream || state.peersOnChannel.size === 0) {
+                if(state.peersOnChannel.size === 0) statusText.innerText = "NO PEERS";
+                return;
+            }
+            pttBtn.classList.add('ptt-active');
+            pttContainer.classList.add('transmitting');
+            txIndicator.style.backgroundColor = "#ef4444";
+            statusText.innerText = "TX ALL";
+
+            state.peersOnChannel.forEach(pId => {
+                const call = peer.call(pId, localStream);
+                activeCalls.push(call);
+            });
         }
 
-        // --- UI ACTIONS ---
+        function stopTransmit() {
+            pttBtn.classList.remove('ptt-active');
+            pttContainer.classList.remove('transmitting');
+            txIndicator.style.backgroundColor = "";
+            statusText.innerText = "READY";
+            activeCalls.forEach(c => c.close());
+            activeCalls = [];
+            playLocalSound(880, 0.05); // Eigener Roger Beep
+        }
+
+        // --- UI EVENTS ---
         document.getElementById('open-settings').onclick = () => {
-            document.getElementById('input-username').value = state.username;
+            document.getElementById('input-username').value = state.name;
             document.getElementById('input-channel').value = state.channel;
-            freqSlider.value = state.ringFreq;
-            document.getElementById('val-ring-freq').innerText = state.ringFreq;
             overlay.style.display = 'flex';
         };
 
-        document.getElementById('close-settings').onclick = () => overlay.style.display = 'none';
-
         document.getElementById('save-settings').onclick = () => {
-            state.username = document.getElementById('input-username').value || state.username;
+            state.name = document.getElementById('input-username').value.replace(/_/g, '') || state.name;
             state.channel = document.getElementById('input-channel').value;
-            state.ringFreq = parseInt(freqSlider.value);
+            state.freq = parseInt(document.getElementById('input-freq').value);
             
-            localStorage.setItem('wt_name', state.username);
+            localStorage.setItem('wt_name', state.name);
             localStorage.setItem('wt_chan', state.channel);
-            localStorage.setItem('wt_freq', state.ringFreq);
+            localStorage.setItem('wt_freq', state.freq);
             
             overlay.style.display = 'none';
-            startNetwork();
+            initNetwork();
         };
 
-        freqSlider.oninput = () => {
-            document.getElementById('val-ring-freq').innerText = freqSlider.value;
+        document.getElementById('input-freq').oninput = (e) => {
+            document.getElementById('val-freq').innerText = e.target.value + "Hz";
         };
 
         document.getElementById('call-btn').onclick = () => {
-            const partner = prompt("Wen möchtest du anklingeln?");
-            if (partner) {
-                const conn = peer.connect(`${CHANNEL_PREFIX}${state.channel}_${partner}`);
-                conn.on('open', () => {
-                    conn.send({ type: 'ALERT', freq: state.ringFreq });
-                    playBip('ring'); // Selbst hören
-                    setTimeout(() => conn.close(), 500);
-                });
-            }
+            playLocalSound(state.freq, 0.5); // Selbst hören
+            broadcastSignal({ type: 'ALERT', freq: state.freq });
         };
 
         // PTT Listeners
-        pttBtn.onmousedown = startTX;
-        pttBtn.onmouseup = stopTX;
-        pttBtn.ontouchstart = (e) => { e.preventDefault(); startTX(); };
-        pttBtn.ontouchend = (e) => { e.preventDefault(); stopTX(); };
+        const noSelect = (e) => e.preventDefault();
+        pttBtn.addEventListener('mousedown', startTransmit);
+        window.addEventListener('mouseup', stopTransmit);
+        pttBtn.addEventListener('touchstart', (e) => { noSelect(e); startTransmit(); });
+        window.addEventListener('touchend', stopTransmit);
 
-        // Start
-        startNetwork();
+        // Initial Start
+        initNetwork();
     </script>
 </body>
 </html>
-
 
