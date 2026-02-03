@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AudioForge X1 - Profi Stimmenverzerrer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-color: #1e293b;
+            --accent-color: #3b82f6;
+            --knob-color: #475569;
+            --text-color: #e2e8f0;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Custom Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 2px;
+        }
+
+        .knob-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .led-active {
+            box-shadow: 0 0 8px 2px #22c55e;
+            background-color: #22c55e !important;
+        }
+        
+        .led-rec {
+            animation: pulse 1s infinite;
+            background-color: #ef4444 !important;
+            box-shadow: 0 0 10px #ef4444;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .rack-panel {
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+        }
+
+        /* Scanline effect for canvas */
+        .visualizer-container {
+            background: #000;
+            border: 2px solid #333;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+        .visualizer-container::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 2;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-slate-700 pb-6">
+            <div class="flex items-center gap-4 mb-4 md:mb-0">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+                <div>
+                    <h1 class="text-3xl font-bold tracking-tight text-white">AudioForge X1</h1>
+                    <p class="text-slate-400 text-sm">Advanced WebAudio Processor</p>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <div id="statusIndicator" class="px-3 py-1 rounded-full text-xs font-mono bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-slate-500 transition-colors" id="statusDot"></div>
+                    <span id="statusText">BEREIT</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Interface Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left Column: Input & Controls -->
+            <div class="lg:col-span-4 space-y-6">
+                
+                <!-- Input Source Panel -->
+                <div class="rack-panel rounded-lg p-5">
+                    <h2 class="text-xs uppercase tracking-widest text-slate-500 font-bold mb-4 border-b border-slate-700 pb-2">Eingangsquelle</h2>
+                    
+                    <div class="flex gap-2 mb-4">
+                        <button id="btnMic" class="flex-1 py-3 px-4 rounded bg-slate-700 hover:bg-slate-600 transition flex flex-col items-center justify-center gap-2 border border-slate-600">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="23"></line>
+                                <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>
+                            <span class="text-xs font-bold">MIKROFON</span>
+                        </button>
+                        <button id="btnFile" class="flex-1 py-3 px-4 rounded bg-slate-700 hover:bg-slate-600 transition flex flex-col items-center justify-center gap-2 border border-slate-600">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <span class="text-xs font-bold">DATEI</span>
+                        </button>
+                        <input type="file" id="fileInput" accept="audio/*" class="hidden">
+                    </div>
+
+                    <!-- Audio Player Controls (Hidden by default) -->
+                    <div id="playerControls" class="hidden bg-slate-800 p-3 rounded border border-slate-700">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-slate-400 truncate" id="fileName">Keine Datei</span>
+                            <span class="text-xs font-mono" id="fileTime">00:00</span>
+                        </div>
+                        <div class="flex gap-2 justify-center">
+                            <button id="btnPlay" class="p-2 rounded-full bg-blue-600 hover:bg-blue-500">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            </button>
+                            <button id="btnStop" class="p-2 rounded-full bg-slate-600 hover:bg-slate-500">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Presets -->
+                <div class="rack-panel rounded-lg p-5">
+                    <h2 class="text-xs uppercase tracking-widest text-slate-500 font-bold mb-4 border-b border-slate-700 pb-2">Presets</h2>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button class="preset-btn py-2 px-3 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-xs font-bold transition" data-preset="normal">NORMAL</button>
+                        <button class="preset-btn py-2 px-3 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-xs font-bold transition" data-preset="robot">ROBOTER</button>
+                        <button class="preset-btn py-2 px-3 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-xs font-bold transition" data-preset="alien">ALIEN</button>
+                        <button class="preset-btn py-2 px-3 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-xs font-bold transition" data-preset="demon">DÄMON</button>
+                        <button class="preset-btn py-2 px-3 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-xs font-bold transition" data-preset="phone">TELEFON</button>
+                        <button class="preset-btn py-2 px-3 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-xs font-bold transition" data-preset="cave">HÖHLE</button>
+                    </div>
+                </div>
+
+                <!-- Recorder -->
+                <div class="rack-panel rounded-lg p-5 border-t-4 border-t-red-500">
+                    <h2 class="text-xs uppercase tracking-widest text-slate-500 font-bold mb-4 border-b border-slate-700 pb-2">Master Aufnahme</h2>
+                    <div class="flex gap-3 items-center">
+                        <button id="btnRecord" class="flex-1 py-4 bg-slate-800 rounded border border-slate-600 hover:bg-slate-700 flex items-center justify-center gap-2 group transition">
+                            <div class="w-3 h-3 rounded-full bg-red-600 group-hover:bg-red-500 transition" id="recDot"></div>
+                            <span class="font-bold text-sm" id="recText">AUFNAHME</span>
+                        </button>
+                        <a id="downloadLink" class="hidden flex-1 py-4 bg-blue-600 rounded border border-blue-500 hover:bg-blue-500 flex items-center justify-center gap-2 text-white font-bold text-sm cursor-pointer">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            DOWNLOAD
+                        </a>
+                    </div>
+                    <div class="mt-2 text-center text-xs text-slate-500 font-mono" id="recTimer">00:00:00</div>
+                </div>
+
+            </div>
+
+            <!-- Right Column: Visualizer & Effects Rack -->
+            <div class="lg:col-span-8 space-y-6">
+                
+                <!-- Visualizer -->
+                <div class="visualizer-container h-48 w-full bg-black rounded-lg">
+                    <canvas id="visualizer" class="w-full h-full"></canvas>
+                </div>
+
+                <!-- Effects Rack Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                    <!-- Module 1: Distortion & Pitch -->
+                    <div class="rack-panel rounded-lg p-4">
+                        <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+                            <h3 class="font-bold text-yellow-500 text-sm">OVERDRIVE / PITCH</h3>
+                            <div class="w-2 h-2 rounded-full bg-yellow-500 shadow-[0_0_5px_rgba(234,179,8,0.8)]"></div>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="knob-container">
+                                <div class="flex justify-between w-full text-xs text-slate-400 mb-1">
+                                    <span>Drive</span>
+                                    <span id="valDist">0%</span>
+                                </div>
+                                <input type="range" id="distAmount" min="0" max="100" value="0">
+                            </div>
+                            <div class="knob-container">
+                                <div class="flex justify-between w-full text-xs text-slate-400 mb-1">
+                                    <span>Speed/Pitch (Datei)</span>
+                                    <span id="valPitch">1.0x</span>
+                                </div>
+                                <input type="range" id="pitchRate" min="0.5" max="2.0" step="0.1" value="1.0">
+                                <p class="text-[10px] text-slate-600 mt-1">* Pitch nur bei Dateien aktiv</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Module 2: Ring Modulator -->
+                    <div class="rack-panel rounded-lg p-4">
+                        <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+                            <h3 class="font-bold text-cyan-500 text-sm">RING MOD (ROBOTER)</h3>
+                            <div class="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_5px_rgba(6,182,212,0.8)]"></div>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="knob-container">
+                                <div class="flex justify-between w-full text-xs text-slate-400 mb-1">
+                                    <span>Mix</span>
+                                    <span id="valRingMix">0%</span>
+                                </div>
+                                <input type="range" id="ringMix" min="0" max="1" step="0.01" value="0">
+                            </div>
+                            <div class="knob-container">
+                                <div class="flex justify-between w-full text-xs text-slate-400 mb-1">
+                                    <span>Frequenz</span>
+                                    <span id="valRingFreq">50 Hz</span>
+                                </div>
+                                <input type="range" id="ringFreq" min="10" max="2000" step="10" value="50">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Module 3: Filter / EQ -->
+                    <div class="rack-panel rounded-lg p-4">
+                        <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+                            <h3 class="font-bold text-green-500 text-sm">FILTER / EQ</h3>
+                            <div class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.8)]"></div>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="knob-container">
+                                <div class="flex justify-between w-full text-xs text-slate-400 mb-1">
+                                    <span>Typ</span>
+                                    <span id="valFilterType">Tiefpass</span>
+                                </div>
+                                <select id="filterType" class="w-full bg-slate-800 text-xs text-slate-300 border border-slate-600 rounded p-1 mb-2">
+                                    <option value="lowpass">Tiefpass (Dumpf)</option>
+                                    <option value="highpass">Hochpass (Dünn)</option>
+                                    <option value="bandpass">Bandpass (Telefon)</option>
+                                    <option value="notch">Notch</option>
+                                    <option value="allpass">Allpass</option>
+                                </select>
+                            </div>
+                            <div class="knob-container">
+                                <div class="flex justify-between w-full text-xs text-slate-400 mb-1">
+                                    <span>Frequenz</span>
+                                    <span id="valFilterFreq">1000 Hz</span>
+                                </div>
+                                <input type="range" id="filterFreq" min="50" max="5000" step="50" value="1000">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Module 4: Delay & Reverb -->
+                    <div class="rack-panel rounded-lg p-4">
+                        <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+                            <h3 class="font-bold text-purple-500 text-sm">RAUM / ECHO</h3>
+                            <div class="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_5px_rgba(168,85,247,0.8)]"></div>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="knob-container">
+                                <div class="flex justify-between w-full text-xs text-slate-400 mb-1">
+                                    <span>Echo Zeit</span>
+                                    <span id="valDelayTime">0.3s</span>
+                                </div>
+                                <input type="range" id="delayTime" min="0" max="1" step="0.05" value="0.3">
+                            </div>
+                            <div class="knob-container">
+                                <div class="flex justify-between w-full text-xs text-slate-400 mb-1">
+                                    <span>Echo Feedback</span>
+                                    <span id="valDelayFb">0%</span>
+                                </div>
+                                <input type="range" id="delayFeedback" min="0" max="0.9" step="0.05" value="0">
+                            </div>
+                            <div class="knob-container">
+                                <div class="flex justify-between w-full text-xs text-slate-400 mb-1">
+                                    <span>Reverb (Hall)</span>
+                                    <span id="valReverb">0%</span>
+                                </div>
+                                <input type="range" id="reverbMix" min="0" max="1" step="0.05" value="0">
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Footer / Gain -->
+                <div class="rack-panel rounded-lg p-4 flex justify-between items-center">
+                    <div class="text-xs text-slate-500">
+                        <span class="font-bold">OUTPUT MASTER</span>
+                    </div>
+                    <div class="w-1/2">
+                         <input type="range" id="masterGain" min="0" max="2" step="0.1" value="1">
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State Management ---
+        let audioCtx;
+        let micStream;
+        let sourceNode;
+        let fileBuffer;
+        let isPlaying = false;
+        let isRecording = false;
+        let mediaRecorder;
+        let recordedChunks = [];
+        let startTime = 0;
+        let recordInterval;
+
+        // --- Audio Nodes ---
+        let inputGain, distortion, biquadFilter, ringModOsc, ringModGain, delayNode, delayFeedback, reverbConvolver, reverbGain, masterGain, analyser, destNode;
+
+        // --- UI Elements ---
+        const els = {
+            btnMic: document.getElementById('btnMic'),
+            btnFile: document.getElementById('btnFile'),
+            fileInput: document.getElementById('fileInput'),
+            playerControls: document.getElementById('playerControls'),
+            btnPlay: document.getElementById('btnPlay'),
+            btnStop: document.getElementById('btnStop'),
+            fileName: document.getElementById('fileName'),
+            fileTime: document.getElementById('fileTime'),
+            statusText: document.getElementById('statusText'),
+            statusDot: document.getElementById('statusDot'),
+            canvas: document.getElementById('visualizer'),
+            btnRecord: document.getElementById('btnRecord'),
+            recText: document.getElementById('recText'),
+            recDot: document.getElementById('recDot'),
+            recTimer: document.getElementById('recTimer'),
+            downloadLink: document.getElementById('downloadLink'),
+            // Controls
+            distAmount: document.getElementById('distAmount'),
+            pitchRate: document.getElementById('pitchRate'),
+            ringMix: document.getElementById('ringMix'),
+            ringFreq: document.getElementById('ringFreq'),
+            filterType: document.getElementById('filterType'),
+            filterFreq: document.getElementById('filterFreq'),
+            delayTime: document.getElementById('delayTime'),
+            delayFeedback: document.getElementById('delayFeedback'),
+            reverbMix: document.getElementById('reverbMix'),
+            masterGain: document.getElementById('masterGain'),
+            // Value Labels
+            valDist: document.getElementById('valDist'),
+            valPitch: document.getElementById('valPitch'),
+            valRingMix: document.getElementById('valRingMix'),
+            valRingFreq: document.getElementById('valRingFreq'),
+            valFilterFreq: document.getElementById('valFilterFreq'),
+            valDelayTime: document.getElementById('valDelayTime'),
+            valDelayFb: document.getElementById('valDelayFb'),
+            valReverb: document.getElementById('valReverb')
+        };
+
+        // --- Initialization ---
+        async function initAudio() {
+            if (audioCtx) return;
+            
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+
+            // Create Nodes
+            inputGain = audioCtx.createGain();
+            
+            // 1. Distortion
+            distortion = audioCtx.createWaveShaper();
+            distortion.curve = makeDistortionCurve(0);
+            distortion.oversample = '4x';
+
+            // 2. Filter
+            biquadFilter = audioCtx.createBiquadFilter();
+            biquadFilter.type = "lowpass";
+            biquadFilter.frequency.value = 1000;
+            biquadFilter.Q.value = 1;
+
+            // 3. Ring Modulator (Robot Effect)
+            // This is complex: Input -> GainNode (Modulated by Osc) -> Output
+            // We implement it by branching the signal.
+            // Branch A: Clean (or processed so far)
+            // Branch B: Ring Mod
+            // We'll actually insert it in series for simplicity but control the mix via a wet/dry gain logic if we wanted, 
+            // but for a strict effect chain: Signal -> RingModNode.
+            // Web Audio Ring Mod: Signal connected to a GainNode, Oscillator connected to GainNode.gain.
+            ringModOsc = audioCtx.createOscillator();
+            ringModOsc.type = 'sine';
+            ringModOsc.frequency.value = 50;
+            ringModOsc.start();
+            
+            // To make ring mod blendable, we need a Dry/Wet structure
+            // But for this "Single File" rack structure, we will do:
+            // Input -> Distortion -> Filter -> [Splitter] -> Dry / Wet -> Merger -> Delay -> ...
+            // Let's simplify: The "Ring Mix" controls the amplitude of the oscillator modulating a gain node.
+            // If Mix is 0, gain is constant 1. If Mix is 1, gain fluctuates fully.
+            // Actually, standard RingMod is (Input * Carrier).
+            // Let's build a dedicated node structure for Ring Mod later in the connect chain.
+            
+            ringModGain = audioCtx.createGain(); // The node the signal passes through
+            ringModGain.gain.value = 1; 
+            
+            const ringModCarrierGain = audioCtx.createGain(); // Scopes the oscillator strength
+            ringModCarrierGain.gain.value = 0;
+            
+            ringModOsc.connect(ringModCarrierGain);
+            ringModCarrierGain.connect(ringModGain.gain); // Audio-rate modulation
+
+            // 4. Delay
+            delayNode = audioCtx.createDelay(2.0);
+            delayNode.delayTime.value = 0.3;
+            delayFeedback = audioCtx.createGain();
+            delayFeedback.gain.value = 0;
+            
+            delayNode.connect(delayFeedback);
+            delayFeedback.connect(delayNode);
+
+            // 5. Reverb (Convolver)
+            reverbConvolver = audioCtx.createConvolver();
+            reverbConvolver.buffer = await createReverbBuffer();
+            reverbGain = audioCtx.createGain();
+            reverbGain.gain.value = 0;
+
+            // Master & Analysis
+            masterGain = audioCtx.createGain();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048;
+            
+            destNode = audioCtx.createMediaStreamDestination();
+
+            // --- Wiring the Graph ---
+            // We need a Dry/Wet mix for Delay and Reverb usually, but simpler to just tap off.
+            
+            // Main Chain
+            inputGain.connect(distortion);
+            distortion.connect(biquadFilter);
+            biquadFilter.connect(ringModGain);
+            
+            // From RingMod, split to Dry, Delay, Reverb
+            // We use a Master Bus approach
+            const dryBus = audioCtx.createGain();
+            ringModGain.connect(dryBus);
+            ringModGain.connect(delayNode);
+            ringModGain.connect(reverbConvolver);
+            
+            // Delay Output
+            delayNode.connect(dryBus); // Mix delay back in
+            
+            // Reverb Output
+            reverbConvolver.connect(reverbGain);
+            reverbGain.connect(dryBus);
+            
+            // Output
+            dryBus.connect(masterGain);
+            masterGain.connect(analyser);
+            analyser.connect(audioCtx.destination); // Monitor
+            analyser.connect(destNode); // Recorder source
+
+            updateStatus("BEREIT", "bg-green-500");
+            drawVisualizer();
+        }
+
+        // --- Helpers ---
+        function makeDistortionCurve(amount) {
+            const k = typeof amount === 'number' ? amount : 50,
+                n_samples = 44100,
+                curve = new Float32Array(n_samples),
+                deg = Math.PI / 180;
+            let x;
+            for (let i = 0; i < n_samples; ++i) {
+                x = i * 2 / n_samples - 1;
+                curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+            }
+            return curve;
+        }
+
+        async function createReverbBuffer() {
+            // Generates synthetic impulse response for reverb
+            const length = audioCtx.sampleRate * 2.0; // 2 seconds
+            const impulse = audioCtx.createBuffer(2, length, audioCtx.sampleRate);
+            const left = impulse.getChannelData(0);
+            const right = impulse.getChannelData(1);
+            for (let i = 0; i < length; i++) {
+                const decay = Math.pow(1 - i / length, 2);
+                left[i] = (Math.random() * 2 - 1) * decay;
+                right[i] = (Math.random() * 2 - 1) * decay;
+            }
+            return impulse;
+        }
+
+        // --- Input Handling ---
+
+        // Microphone
+        els.btnMic.addEventListener('click', async () => {
+            await initAudio();
+            if(isPlaying) stopFile();
+            
+            els.btnMic.classList.add('border-blue-500', 'text-blue-400');
+            els.btnFile.classList.remove('border-blue-500', 'text-blue-400');
+            els.playerControls.classList.add('hidden');
+
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+                const micSource = audioCtx.createMediaStreamSource(micStream);
+                if (sourceNode) sourceNode.disconnect();
+                sourceNode = micSource;
+                sourceNode.connect(inputGain);
+                updateStatus("MIKROFON AKTIV", "bg-red-500");
+            } catch (err) {
+                alert("Mikrofon-Zugriff verweigert!");
+            }
+        });
+
+        // File
+        els.btnFile.addEventListener('click', () => {
+             els.fileInput.click();
+        });
+
+        els.fileInput.addEventListener('change', async (e) => {
+            if (e.target.files.length === 0) return;
+            const file = e.target.files[0];
+            els.fileName.textContent = file.name;
+            
+            await initAudio();
+            
+            els.btnFile.classList.add('border-blue-500', 'text-blue-400');
+            els.btnMic.classList.remove('border-blue-500', 'text-blue-400');
+            els.playerControls.classList.remove('hidden');
+            
+            if (micStream) {
+                micStream.getTracks().forEach(track => track.stop());
+                micStream = null;
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+            fileBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            updateStatus("DATEI GELADEN", "bg-blue-500");
+        });
+
+        els.btnPlay.addEventListener('click', () => {
+            if (!fileBuffer || isPlaying) return;
+            playFile();
+        });
+
+        els.btnStop.addEventListener('click', stopFile);
+
+        function playFile() {
+            if (sourceNode) sourceNode.disconnect();
+            sourceNode = audioCtx.createBufferSource();
+            sourceNode.buffer = fileBuffer;
+            sourceNode.loop = true;
+            // Apply pitch from slider
+            sourceNode.playbackRate.value = parseFloat(els.pitchRate.value);
+            
+            sourceNode.connect(inputGain);
+            sourceNode.start(0);
+            isPlaying = true;
+            updateStatus("SPIELT AB", "bg-green-500");
+        }
+
+        function stopFile() {
+            if (sourceNode && isPlaying) {
+                sourceNode.stop();
+                isPlaying = false;
+                updateStatus("GESTOPPT", "bg-slate-500");
+            }
+        }
+
+        // --- Parameter Updates ---
+
+        function updateKnob(element, valueDisplay, callback) {
+            element.addEventListener('input', (e) => {
+                const val = e.target.value;
+                if(valueDisplay) valueDisplay.textContent = val + (element.dataset.suffix || "");
+                if(audioCtx) callback(parseFloat(val));
+            });
+        }
+
+        // Distortion
+        els.distAmount.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            els.valDist.textContent = val + "%";
+            if (distortion) distortion.curve = makeDistortionCurve(val * 4); // Scale up
+        });
+
+        // Pitch (File only)
+        els.pitchRate.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            els.valPitch.textContent = val.toFixed(1) + "x";
+            if (sourceNode && sourceNode.playbackRate) {
+                sourceNode.playbackRate.value = val;
+            }
+        });
+
+        // Ring Mod
+        els.ringMix.addEventListener('input', (e) => { // 0 to 1
+            const val = parseFloat(e.target.value);
+            els.valRingMix.textContent = Math.round(val * 100) + "%";
+            // Logic: Value 0 -> CarrierGain 0 (No Mod), Offset 1 (Clean signal passes).
+            // Value 1 -> CarrierGain 1 (Full Mod), Offset 0 (Signal is only Amplitude Modulated).
+            // Actually, for pure RingMod, we usually want (Signal * Osc).
+            // Here we implemented: Signal -> Gain -> Out. Gain is controlled by Osc.
+            // If Osc is 0, Gain needs to be 1 to pass sound.
+            // If Osc is active, it oscillates around 0.
+            // We need to bias the oscillator for Tremolo vs RingMod.
+            // For simple RingMod in this architecture:
+            // Just increase the carrier gain connected to the main gain node.
+            // But we need to make sure the main gain node doesn't silence everything when mod is off.
+            // Let's rely on the dry/wet logic we didn't fully implement or hack it:
+            // Hack: If Mix > 0, set main gain node base value to 0, let Osc drive it.
+            // Ideally: GainNode.gain.value = 1 (base) + Osc (mod).
+            // If Mix is high, we want mostly Mod.
+            
+            // To keep it robust: We will just set the gain of the connection between Osc and RingGain.
+            // And we assume RingGain.gain.value = 1.
+            // The result is Signal * (1 + Osc*Mix). This is Amplitude Modulation (Tremolo/AM).
+            // True Ring Mod requires Signal * Osc.
+            // For this UI, AM is often "cleaner" for voices unless fully robotic.
+            // Let's stick to AM: Gain = 1 + (Osc * Mix).
+            
+            // Re-access the carrier gain we created in init (we didn't save it to a var).
+            // Let's fix initAudio to save `ringModCarrierGain`.
+            // For now, let's assume `val` controls the gain of the osc.
+            // Since we can't easily reach local scope vars from init, let's put them in global or re-structure.
+            // *Fixing via closure isn't possible here easily.* // *Redoing Ring logic to be global variables*:
+        });
+
+        // *Proper Parameter Linking*
+        // We need to re-assign the node variables in initAudio so they are accessible here. 
+        // I declared them globally, but the internal connection `ringModCarrierGain` was local.
+        // Let's handle the listeners inside `initAudio` or make the nodes global.
+        // For simplicity in this single file, I'll update the listeners to check globals, 
+        // but since `ringModCarrierGain` wasn't global, I need to fix that logic.
+        
+        // RE-IMPLEMENTATION of Listener Logic to be robust:
+        // We will attach listeners once, and inside them check if nodes exist.
+
+        // Global ref for the carrier gain
+        let ringModCarrierGain;
+
+        // Overwrite the listener logic
+        function setupListeners() {
+            // Distortion
+            els.distAmount.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                els.valDist.textContent = val + "%";
+                if (distortion) distortion.curve = makeDistortionCurve(val * 5);
+            });
+
+            // Pitch
+            els.pitchRate.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                els.valPitch.textContent = val.toFixed(1) + "x";
+                if (sourceNode && sourceNode.playbackRate) sourceNode.playbackRate.value = val;
+            });
+
+            // Ring Mod Mix
+            els.ringMix.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                els.valRingMix.textContent = Math.round(val*100) + "%";
+                if(ringModCarrierGain) ringModCarrierGain.gain.value = val * 5; // boost for effect
+            });
+
+            // Ring Mod Freq
+            els.ringFreq.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                els.valRingFreq.textContent = val + " Hz";
+                if(ringModOsc) ringModOsc.frequency.value = val;
+            });
+
+            // Filter
+            els.filterType.addEventListener('change', (e) => {
+                els.valFilterType.textContent = e.target.options[e.target.selectedIndex].text;
+                if(biquadFilter) biquadFilter.type = e.target.value;
+            });
+
+            els.filterFreq.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                els.valFilterFreq.textContent = val + " Hz";
+                if(biquadFilter) biquadFilter.frequency.value = val;
+            });
+
+            // Delay
+            els.delayTime.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                els.valDelayTime.textContent = val.toFixed(2) + "s";
+                if(delayNode) delayNode.delayTime.value = val;
+            });
+
+            els.delayFeedback.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                els.valDelayFb.textContent = Math.round(val*100) + "%";
+                if(delayFeedback) delayFeedback.gain.value = val;
+            });
+
+            // Reverb
+            els.reverbMix.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                els.valReverb.textContent = Math.round(val*100) + "%";
+                if(reverbGain) reverbGain.gain.value = val;
+            });
+
+            // Master
+            els.masterGain.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                if(masterGain) masterGain.gain.value = val;
+            });
+        }
+        
+        setupListeners(); // Run once
+
+        // Correction for initAudio regarding RingMod
+        const _originalInit = initAudio;
+        initAudio = async function() {
+            if (audioCtx) return;
+            // Copy paste key parts of init logic to ensure globals are set
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            
+            inputGain = audioCtx.createGain();
+            
+            distortion = audioCtx.createWaveShaper();
+            distortion.curve = makeDistortionCurve(0);
+            distortion.oversample = '4x';
+
+            biquadFilter = audioCtx.createBiquadFilter();
+            biquadFilter.type = els.filterType.value;
+            biquadFilter.frequency.value = els.filterFreq.value;
+
+            // Ring Mod
+            ringModOsc = audioCtx.createOscillator();
+            ringModOsc.type = 'sine';
+            ringModOsc.frequency.value = els.ringFreq.value;
+            ringModOsc.start();
+            
+            ringModGain = audioCtx.createGain();
+            ringModGain.gain.value = 1;
+            
+            ringModCarrierGain = audioCtx.createGain();
+            ringModCarrierGain.gain.value = parseFloat(els.ringMix.value) * 5;
+            
+            ringModOsc.connect(ringModCarrierGain);
+            ringModCarrierGain.connect(ringModGain.gain);
+
+            delayNode = audioCtx.createDelay(2.0);
+            delayNode.delayTime.value = els.delayTime.value;
+            delayFeedback = audioCtx.createGain();
+            delayFeedback.gain.value = els.delayFeedback.value;
+            delayNode.connect(delayFeedback);
+            delayFeedback.connect(delayNode);
+
+            reverbConvolver = audioCtx.createConvolver();
+            reverbConvolver.buffer = await createReverbBuffer();
+            reverbGain = audioCtx.createGain();
+            reverbGain.gain.value = els.reverbMix.value;
+
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = els.masterGain.value;
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048;
+            destNode = audioCtx.createMediaStreamDestination();
+
+            // Connections
+            inputGain.connect(distortion);
+            distortion.connect(biquadFilter);
+            biquadFilter.connect(ringModGain);
+            
+            ringModGain.connect(masterGain); // Dry path (modulated)
+            ringModGain.connect(delayNode);  // To Delay
+            ringModGain.connect(reverbConvolver); // To Reverb
+            
+            delayNode.connect(masterGain);
+            reverbConvolver.connect(reverbGain);
+            reverbGain.connect(masterGain);
+            
+            masterGain.connect(analyser);
+            analyser.connect(audioCtx.destination);
+            analyser.connect(destNode);
+
+            updateStatus("SYSTEM AKTIV", "bg-green-500");
+            drawVisualizer();
+        }
+
+        // --- Visualizer ---
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+            const canvas = els.canvas;
+            const ctx = canvas.getContext("2d");
+            const width = canvas.width = canvas.clientWidth;
+            const height = canvas.height = canvas.clientHeight;
+            
+            if(!analyser) {
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0,0,width,height);
+                return;
+            }
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteTimeDomainData(dataArray);
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; // Fade effect
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "#3b82f6";
+            ctx.beginPath();
+
+            const sliceWidth = width * 1.0 / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * height / 2;
+
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+        }
+
+        // --- Recording ---
+        els.btnRecord.addEventListener('click', async () => {
+            if(!audioCtx) await initAudio();
+
+            if (isRecording) {
+                // Stop Recording
+                mediaRecorder.stop();
+                isRecording = false;
+                els.recText.textContent = "AUFNAHME";
+                els.recDot.classList.remove('led-rec');
+                clearInterval(recordInterval);
+                els.btnRecord.classList.remove('bg-red-900', 'border-red-500');
+            } else {
+                // Start Recording
+                recordedChunks = [];
+                mediaRecorder = new MediaRecorder(destNode.stream);
+                
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+                    const url = URL.createObjectURL(blob);
+                    els.downloadLink.href = url;
+                    els.downloadLink.download = `voice_forge_${Date.now()}.webm`;
+                    els.downloadLink.classList.remove('hidden');
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                startTime = Date.now();
+                els.recText.textContent = "STOP";
+                els.recDot.classList.add('led-rec');
+                els.btnRecord.classList.add('bg-red-900', 'border-red-500');
+                els.downloadLink.classList.add('hidden');
+                
+                recordInterval = setInterval(() => {
+                    const diff = Date.now() - startTime;
+                    const d = new Date(diff);
+                    els.recTimer.textContent = d.toISOString().substr(11, 8);
+                }, 1000);
+            }
+        });
+
+        function updateStatus(text, colorClass) {
+            els.statusText.textContent = text;
+            els.statusDot.className = `w-2 h-2 rounded-full transition-colors ${colorClass}`;
+        }
+
+        // --- Preset Logic ---
+        const presets = {
+            normal: { dist: 0, pitch: 1.0, mix: 0, freq: 50, fType: 'lowpass', fFreq: 2000, delay: 0, fb: 0, rev: 0 },
+            robot:  { dist: 20, pitch: 1.0, mix: 0.8, freq: 50, fType: 'lowpass', fFreq: 1000, delay: 0.1, fb: 0.3, rev: 0 },
+            alien:  { dist: 5, pitch: 1.5, mix: 0.3, freq: 10, fType: 'highpass', fFreq: 500, delay: 0.2, fb: 0.6, rev: 0.4 },
+            demon:  { dist: 40, pitch: 0.6, mix: 0.2, freq: 30, fType: 'lowpass', fFreq: 600, delay: 0, fb: 0, rev: 0.5 },
+            phone:  { dist: 30, pitch: 1.0, mix: 0, freq: 50, fType: 'bandpass', fFreq: 1500, delay: 0, fb: 0, rev: 0 },
+            cave:   { dist: 0, pitch: 0.9, mix: 0, freq: 50, fType: 'lowpass', fFreq: 1200, delay: 0.4, fb: 0.5, rev: 0.8 }
+        };
+
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const p = presets[e.target.dataset.preset];
+                if (!p) return;
+
+                // Update UI Controls
+                els.distAmount.value = p.dist; els.distAmount.dispatchEvent(new Event('input'));
+                els.pitchRate.value = p.pitch; els.pitchRate.dispatchEvent(new Event('input'));
+                els.ringMix.value = p.mix; els.ringMix.dispatchEvent(new Event('input'));
+                els.ringFreq.value = p.freq; els.ringFreq.dispatchEvent(new Event('input'));
+                els.filterType.value = p.fType; els.filterType.dispatchEvent(new Event('change'));
+                els.filterFreq.value = p.fFreq; els.filterFreq.dispatchEvent(new Event('input'));
+                els.delayTime.value = p.delay; els.delayTime.dispatchEvent(new Event('input'));
+                els.delayFeedback.value = p.fb; els.delayFeedback.dispatchEvent(new Event('input'));
+                els.reverbMix.value = p.rev; els.reverbMix.dispatchEvent(new Event('input'));
+
+                // Visual Feedback
+                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
+                e.target.classList.add('bg-blue-600', 'text-white');
+            });
+        });
+
+    </script>
+</body>
+</html>
