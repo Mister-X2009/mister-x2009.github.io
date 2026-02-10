@@ -3,179 +3,247 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Saber Debugger</title>
+    <title>Proffie Web Saber</title>
     <style>
+        :root {
+            --blade-color: #00ffcc;
+            --blade-core: #ffffff;
+        }
+
         body {
-            background-color: #000;
-            color: #0f0; /* Hacker-Grün für Debug-Look */
-            font-family: monospace;
+            background-color: #050505;
+            color: #eee;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-            margin: 0;
-            overflow: hidden;
-            text-align: center;
+            touch-action: none;
+            transition: background-color 0.1s ease-out;
         }
 
-        #status {
-            font-size: 14px;
-            margin-bottom: 20px;
-            padding: 10px;
-            border: 1px solid #333;
-            width: 80%;
-            min-height: 100px;
-            white-space: pre-wrap;
+        #ui-layer {
+            position: absolute;
+            z-index: 100;
+            text-align: center;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.85);
+            transition: opacity 0.5s;
+        }
+
+        #ui-layer.hidden {
+            opacity: 0;
+            pointer-events: none;
         }
 
         button {
-            background: #222;
-            color: #fff;
-            border: 2px solid #fff;
-            padding: 20px 40px;
-            font-size: 20px;
-            border-radius: 10px;
-            margin: 10px;
+            background: transparent;
+            color: var(--blade-color);
+            border: 2px solid var(--blade-color);
+            padding: 20px 50px;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 15px var(--blade-color);
         }
 
-        #visualizer {
-            width: 50px;
-            height: 50px;
-            background: red;
-            border-radius: 50%;
-            margin-top: 20px;
-            transition: transform 0.1s;
+        #saber-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            padding-bottom: 50px;
+        }
+
+        #blade {
+            width: 24px;
+            height: 0%;
+            background: var(--blade-core);
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 0 20px var(--blade-color), 0 0 40px var(--blade-color);
+            transition: height 0.3s ease-out;
+        }
+
+        #hilt {
+            width: 60px;
+            height: 220px;
+            background: linear-gradient(to right, #222, #666, #222);
+            border-radius: 5px;
+            position: relative;
+        }
+
+        .active #blade { height: 70%; }
+
+        #debug-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 12px;
+            color: #555;
+            text-align: left;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .clash-flash {
+            background-color: white !important;
         }
     </style>
 </head>
 <body>
 
-    <h1>Firefox Debug Modus</h1>
-    
-    <div id="status">Warte auf Start...</div>
+    <div id="debug-info">Sensor-Status: Warte...</div>
 
-    <button id="btn-start">System Starten</button>
+    <div id="ui-layer">
+        <h1>Web Saber</h1>
+        <p id="browser-warning" style="color: #f44; font-size: 0.8rem; max-width: 80%;"></p>
+        <button id="activate-btn">Zünden</button>
+    </div>
 
-    <div id="visualizer"></div>
+    <div id="saber-container">
+        <div id="blade"></div>
+        <div id="hilt"></div>
+    </div>
 
     <script>
-        const statusDiv = document.getElementById('status');
-        const vis = document.getElementById('visualizer');
-        const btn = document.getElementById('btn-start');
-        
-        let audioCtx;
-        let osc;
-        let gainNode;
+        const CONFIG = {
+            baseFreq: 50,
+            clashThreshold: 18
+        };
+
+        let audioCtx, masterGain, humOsc, swingOsc, swingGain, swingFilter;
         let isRunning = false;
+        const debug = document.getElementById('debug-info');
+        const warning = document.getElementById('browser-warning');
 
-        function log(msg) {
-            statusDiv.innerText = msg + "\n" + statusDiv.innerText.substring(0, 100);
-        }
-
-        function updateSensorDisplay(alpha, beta, gamma, speed) {
-            // Zeigt rohe Daten an, damit wir sehen, ob Firefox überhaupt was liefert
-            statusDiv.innerText = `SPEED: ${speed.toFixed(1)}\nAlpha: ${alpha?.toFixed(1)}\nBeta: ${beta?.toFixed(1)}\nGamma: ${gamma?.toFixed(1)}`;
+        // Überprüfung auf HTTPS
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            warning.innerText = "ACHTUNG: Sensoren funktionieren oft nur über HTTPS!";
         }
 
         function initAudio() {
-            try {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                audioCtx = new AudioContext();
-                
-                // Einfacher Sinus-Ton zum Testen
-                osc = audioCtx.createOscillator();
-                gainNode = audioCtx.createGain();
-                
-                osc.type = 'sawtooth';
-                osc.frequency.value = 50; // Tiefer Brumm
-                gainNode.gain.value = 0; // Startet stumm
-                
-                osc.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-                osc.start();
-                
-                log("Audio initialisiert. Context State: " + audioCtx.state);
-            } catch(e) {
-                log("Audio Fehler: " + e.message);
-            }
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.5;
+            masterGain.connect(audioCtx.destination);
+
+            // Idle Hum
+            humOsc = audioCtx.createOscillator();
+            humOsc.type = 'sawtooth';
+            humOsc.frequency.value = CONFIG.baseFreq;
+            const humLowpass = audioCtx.createBiquadFilter();
+            humLowpass.frequency.value = 150;
+            humOsc.connect(humLowpass);
+            const hGain = audioCtx.createGain();
+            hGain.gain.value = 0.1;
+            humLowpass.connect(hGain);
+            hGain.connect(masterGain);
+            humOsc.start();
+
+            // Swing Synth
+            swingOsc = audioCtx.createOscillator();
+            swingOsc.type = 'sawtooth';
+            swingOsc.frequency.value = CONFIG.baseFreq;
+            swingFilter = audioCtx.createBiquadFilter();
+            swingFilter.frequency.value = 100;
+            swingGain = audioCtx.createGain();
+            swingGain.gain.value = 0;
+            swingOsc.connect(swingFilter);
+            swingFilter.connect(swingGain);
+            swingGain.connect(masterGain);
+            swingOsc.start();
         }
 
         function handleMotion(event) {
-            if (!isRunning) return;
+            if (!audioCtx || !isRunning) return;
 
+            // Firefox liefert Daten oft in 'accelerationIncludingGravity' oder 'rotationRate'
             const r = event.rotationRate;
-            
-            // Firefox liefert manchmal null zurück, wenn Sensoren fehlen
-            if (!r) {
-                statusDiv.innerText = "Keine Rotations-Daten empfangen (Null)";
-                return;
-            }
+            let speed = 0;
 
-            // Geschwindigkeit berechnen
-            const speed = Math.sqrt(r.alpha * r.alpha + r.beta * r.beta + r.gamma * r.gamma);
-            
-            updateSensorDisplay(r.alpha, r.beta, r.gamma, speed);
-
-            // Visuelles Feedback (Kreis wird größer)
-            const scale = 1 + (speed / 100);
-            vis.style.transform = `scale(${scale})`;
-            vis.style.background = `rgb(${Math.min(speed, 255)}, 0, 0)`;
-
-            // Audio Feedback
-            if (audioCtx && gainNode) {
-                // Lautstärke basierend auf Bewegung
-                const vol = Math.min(speed / 300, 1.0);
-                gainNode.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.1);
-                
-                // Tonhöhe ändert sich auch
-                osc.frequency.setTargetAtTime(50 + (vol * 100), audioCtx.currentTime, 0.1);
-            }
-        }
-
-        btn.addEventListener('click', async () => {
-            // 1. Audio Context starten/resume (Wichtig für Firefox)
-            if (!audioCtx) initAudio();
-            if (audioCtx.state === 'suspended') {
-                await audioCtx.resume();
-                log("Audio resumed.");
-            }
-
-            // 2. iOS Permission (schadet nicht, das drin zu lassen)
-            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-                try {
-                    const response = await DeviceMotionEvent.requestPermission();
-                    if (response !== 'granted') {
-                        log("Permission denied (iOS).");
-                        return;
-                    }
-                } catch (e) {
-                    log("Permission Error: " + e);
+            if (r && r.alpha !== null) {
+                speed = Math.sqrt(r.alpha**2 + r.beta**2 + r.gamma**2);
+                debug.innerText = `Sensor: OK | Rotation: ${Math.round(speed)}`;
+            } else {
+                // Fallback für Browser, die rotationRate nicht füllen
+                const acc = event.accelerationIncludingGravity;
+                if (acc) {
+                    speed = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2) * 2; // Simulierter Speed
+                    debug.innerText = `Sensor: Fallback | Accel: ${Math.round(speed)}`;
+                } else {
+                    debug.innerText = `Sensor: NULL (Firefox blockiert)`;
                 }
             }
 
-            // 3. Event Listener hinzufügen
-            if (isRunning) {
-                window.removeEventListener('devicemotion', handleMotion);
-                isRunning = false;
-                btn.innerText = "System Starten";
-                log("Gestoppt.");
-                gainNode.gain.value = 0;
-            } else {
-                window.addEventListener('devicemotion', handleMotion);
+            // Audio Modulation
+            const intensity = Math.min(speed / 200, 1.0);
+            const now = audioCtx.currentTime;
+            
+            swingGain.gain.setTargetAtTime(intensity * 0.8, now, 0.05);
+            swingFilter.frequency.setTargetAtTime(100 + (intensity * 800), now, 0.05);
+            swingOsc.frequency.setTargetAtTime(CONFIG.baseFreq + (intensity * 30), now, 0.05);
+
+            // Clash Detection
+            const accRaw = event.acceleration;
+            if (accRaw && accRaw.x !== null) {
+                const totalAcc = Math.sqrt(accRaw.x**2 + accRaw.y**2 + accRaw.z**2);
+                if (totalAcc > CONFIG.clashThreshold) {
+                    triggerClash();
+                }
+            }
+        }
+
+        function triggerClash() {
+            if (!window.lastClash || Date.now() - window.lastClash > 300) {
+                window.lastClash = Date.now();
+                document.body.classList.add('clash-flash');
+                setTimeout(() => document.body.classList.remove('clash-flash'), 100);
+                // Hier könnte man noch einen kurzen Noise-Burst abspielen
+            }
+        }
+
+        document.getElementById('activate-btn').addEventListener('click', async () => {
+            if (!isRunning) {
+                // Audio Context starten (Firefox/Chrome Requirement)
+                if (!audioCtx) initAudio();
+                if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+                // Permissions (iOS)
+                if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission !== 'granted') return;
+                }
+
+                window.addEventListener('devicemotion', handleMotion, true);
+                document.getElementById('ui-layer').classList.add('hidden');
+                document.getElementById('saber-container').classList.add('active');
                 isRunning = true;
-                btn.innerText = "Stoppen";
-                log("Event Listener aktiv. Bewege das Gerät!");
             }
         });
 
-        // Prüfen ob Sensor API überhaupt existiert
-        if (window.DeviceMotionEvent) {
-            log("DeviceMotionEvent API gefunden.");
-        } else {
-            log("ACHTUNG: DeviceMotionEvent wird von diesem Browser nicht unterstützt.");
-        }
-
+        // Ausschalten durch Tippen auf das Schwert
+        document.body.addEventListener('click', (e) => {
+            if (isRunning && e.target.id !== 'activate-btn') {
+                isRunning = false;
+                window.removeEventListener('devicemotion', handleMotion);
+                document.getElementById('ui-layer').classList.remove('hidden');
+                document.getElementById('saber-container').classList.remove('active');
+                if (audioCtx) audioCtx.close().then(() => audioCtx = null);
+            }
+        });
     </script>
 </body>
 </html>
