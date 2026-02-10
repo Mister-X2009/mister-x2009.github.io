@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Saber - Accelerometer Edition</title>
+    <title>Proffie Web Saber</title>
     <style>
         :root {
-            --blade-color: #00e5ff;
-            --blade-glow: rgba(0, 229, 255, 0.6);
+            --blade-color: #00ffcc;
+            --blade-core: #ffffff;
         }
 
         body {
-            background-color: #000;
-            color: #fff;
-            font-family: sans-serif;
+            background-color: #050505;
+            color: #eee;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
             height: 100vh;
             overflow: hidden;
@@ -22,82 +22,95 @@
             align-items: center;
             justify-content: center;
             touch-action: none;
+            transition: background-color 0.1s ease-out;
         }
 
         #ui-layer {
             position: absolute;
             z-index: 100;
             text-align: center;
-            background: rgba(0,0,0,0.9);
-            inset: 0;
+            width: 100%;
+            height: 100%;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            transition: opacity 0.4s;
+            background: rgba(0,0,0,0.85);
+            transition: opacity 0.5s;
         }
 
-        .hidden { opacity: 0; pointer-events: none; }
+        #ui-layer.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
 
         button {
             background: transparent;
             color: var(--blade-color);
-            border: 3px solid var(--blade-color);
-            padding: 25px 60px;
-            font-size: 1.5rem;
-            border-radius: 50px;
+            border: 2px solid var(--blade-color);
+            padding: 20px 50px;
+            font-size: 1.2rem;
             text-transform: uppercase;
-            box-shadow: 0 0 20px var(--blade-glow);
+            letter-spacing: 3px;
+            border-radius: 50px;
             cursor: pointer;
+            box-shadow: 0 0 15px var(--blade-color);
         }
 
         #saber-container {
+            position: relative;
             width: 100%;
             height: 100%;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: flex-end;
-            padding-bottom: 40px;
+            padding-bottom: 50px;
         }
 
         #blade {
-            width: 20px;
+            width: 24px;
             height: 0%;
-            background: #fff;
+            background: var(--blade-core);
             border-radius: 20px 20px 0 0;
-            box-shadow: 0 0 10px #fff, 0 0 30px var(--blade-color), 0 0 60px var(--blade-color);
-            transition: height 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            box-shadow: 0 0 20px var(--blade-color), 0 0 40px var(--blade-color);
+            transition: height 0.3s ease-out;
         }
-
-        .active #blade { height: 75%; }
 
         #hilt {
-            width: 50px;
-            height: 200px;
-            background: linear-gradient(90deg, #1a1a1a, #444, #1a1a1a);
-            border-radius: 4px;
-            border-top: 4px solid #000;
+            width: 60px;
+            height: 220px;
+            background: linear-gradient(to right, #222, #666, #222);
+            border-radius: 5px;
+            position: relative;
         }
 
-        #debug {
+        .active #blade { height: 70%; }
+
+        #debug-info {
             position: absolute;
             top: 10px;
-            font-size: 10px;
-            color: #444;
-            width: 100%;
-            text-align: center;
+            left: 10px;
+            font-size: 12px;
+            color: #555;
+            text-align: left;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .clash-flash {
+            background-color: white !important;
         }
     </style>
 </head>
 <body>
 
-    <div id="debug">Sensor: Inaktiv</div>
+    <div id="debug-info">Sensor-Status: Warte...</div>
 
     <div id="ui-layer">
-        <h1 style="letter-spacing: 5px;">SABER</h1>
-        <p style="color: #666; margin-bottom: 30px;">Optimiert für Beschleunigungssensoren</p>
-        <button id="start-btn">Zünden</button>
+        <h1>Web Saber</h1>
+        <p id="browser-warning" style="color: #f44; font-size: 0.8rem; max-width: 80%;"></p>
+        <button id="activate-btn">Zünden</button>
     </div>
 
     <div id="saber-container">
@@ -106,130 +119,131 @@
     </div>
 
     <script>
+        const CONFIG = {
+            baseFreq: 50,
+            clashThreshold: 18
+        };
+
         let audioCtx, masterGain, humOsc, swingOsc, swingGain, swingFilter;
         let isRunning = false;
-        
-        // Filter-Variablen (Low-Pass Filter für Sensor)
-        let lastAcc = { x: 0, y: 0, z: 0 };
-        let smoothedIntensity = 0;
-        const FILTER_FACTOR = 0.15; // Je kleiner, desto glatter (aber verzögerter)
-        const DEADZONE = 0.8; // Ignoriert kleine Bewegungen
+        const debug = document.getElementById('debug-info');
+        const warning = document.getElementById('browser-warning');
 
-        const debug = document.getElementById('debug');
-        const ui = document.getElementById('ui-layer');
-        const container = document.getElementById('saber-container');
+        // Überprüfung auf HTTPS
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            warning.innerText = "ACHTUNG: Sensoren funktionieren oft nur über HTTPS!";
+        }
 
         function initAudio() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // Master Gain mit Limiter-Charakteristik
             masterGain = audioCtx.createGain();
-            masterGain.gain.value = 0.6;
+            masterGain.gain.value = 0.5;
             masterGain.connect(audioCtx.destination);
 
-            // Grund-Brummen
+            // Idle Hum
             humOsc = audioCtx.createOscillator();
             humOsc.type = 'sawtooth';
-            humOsc.frequency.value = 55;
+            humOsc.frequency.value = CONFIG.baseFreq;
             const humLowpass = audioCtx.createBiquadFilter();
-            humLowpass.frequency.value = 140;
+            humLowpass.frequency.value = 150;
+            humOsc.connect(humLowpass);
             const hGain = audioCtx.createGain();
-            hGain.gain.value = 0.12;
-
-            humOsc.connect(humLowpass).connect(hGain).connect(masterGain);
+            hGain.gain.value = 0.1;
+            humLowpass.connect(hGain);
+            hGain.connect(masterGain);
             humOsc.start();
 
-            // Swing Sound (Sägezahn für aggressiven Sound)
+            // Swing Synth
             swingOsc = audioCtx.createOscillator();
             swingOsc.type = 'sawtooth';
-            swingOsc.frequency.value = 55;
-            
+            swingOsc.frequency.value = CONFIG.baseFreq;
             swingFilter = audioCtx.createBiquadFilter();
-            swingFilter.type = 'lowpass';
             swingFilter.frequency.value = 100;
-
             swingGain = audioCtx.createGain();
             swingGain.gain.value = 0;
-
-            swingOsc.connect(swingFilter).connect(swingGain).connect(masterGain);
+            swingOsc.connect(swingFilter);
+            swingFilter.connect(swingGain);
+            swingGain.connect(masterGain);
             swingOsc.start();
         }
 
         function handleMotion(event) {
-            if (!isRunning) return;
+            if (!audioCtx || !isRunning) return;
 
-            // Wir nehmen acceleration (ohne Schwerkraft) oder accelerationIncludingGravity
-            // Beschleunigungssensoren geben bei Bewegung Werte in m/s²
-            const acc = event.acceleration || event.accelerationIncludingGravity;
-            if (!acc) return;
+            // Firefox liefert Daten oft in 'accelerationIncludingGravity' oder 'rotationRate'
+            const r = event.rotationRate;
+            let speed = 0;
 
-            // Differenz berechnen (Bewegungsänderung)
-            const dx = acc.x - lastAcc.x;
-            const dy = acc.y - lastAcc.y;
-            const dz = acc.z - lastAcc.z;
-            
-            // Momentane Bewegungsstärke
-            let rawIntensity = Math.sqrt(dx*dx + dy*dy + dz*dz);
-            
-            // Low-Pass Filter: smoothedIntensity = (alt * 0.85) + (neu * 0.15)
-            // Das entfernt das "Zittern" und "Fraggeln"
-            if (rawIntensity < DEADZONE) rawIntensity = 0;
-            smoothedIntensity = (smoothedIntensity * (1 - FILTER_FACTOR)) + (rawIntensity * FILTER_FACTOR);
-
-            updateSound(smoothedIntensity);
-            
-            lastAcc.x = acc.x;
-            lastAcc.y = acc.y;
-            lastAcc.z = acc.z;
-
-            debug.innerText = `Intensität: ${smoothedIntensity.toFixed(2)}`;
-        }
-
-        function updateSound(intensity) {
-            if (!audioCtx) return;
-            const now = audioCtx.currentTime;
-
-            // Mapping: Wie stark wirkt sich die Bewegung aus?
-            const norm = Math.min(intensity / 8, 1.2); // Gedeckelt bei 1.2
-
-            // Sanfte Parameter-Änderungen ohne Klicken (setTargetAtTime)
-            // Volume
-            swingGain.gain.setTargetAtTime(norm * 0.7, now, 0.08);
-            
-            // Frequenz (Pitch-Up beim Schwingen)
-            swingOsc.frequency.setTargetAtTime(55 + (norm * 45), now, 0.1);
-            
-            // Filter (Sound wird heller)
-            swingFilter.frequency.setTargetAtTime(100 + (norm * 900), now, 0.1);
-        }
-
-        document.getElementById('start-btn').addEventListener('click', async () => {
-            if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                const p = await DeviceMotionEvent.requestPermission();
-                if (p !== 'granted') return;
+            if (r && r.alpha !== null) {
+                speed = Math.sqrt(r.alpha**2 + r.beta**2 + r.gamma**2);
+                debug.innerText = `Sensor: OK | Rotation: ${Math.round(speed)}`;
+            } else {
+                // Fallback für Browser, die rotationRate nicht füllen
+                const acc = event.accelerationIncludingGravity;
+                if (acc) {
+                    speed = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2) * 2; // Simulierter Speed
+                    debug.innerText = `Sensor: Fallback | Accel: ${Math.round(speed)}`;
+                } else {
+                    debug.innerText = `Sensor: NULL (Firefox blockiert)`;
+                }
             }
 
-            initAudio();
-            isRunning = true;
-            ui.classList.add('hidden');
-            container.classList.add('active');
-            window.addEventListener('devicemotion', handleMotion, true);
+            // Audio Modulation
+            const intensity = Math.min(speed / 200, 1.0);
+            const now = audioCtx.currentTime;
+            
+            swingGain.gain.setTargetAtTime(intensity * 0.8, now, 0.05);
+            swingFilter.frequency.setTargetAtTime(100 + (intensity * 800), now, 0.05);
+            swingOsc.frequency.setTargetAtTime(CONFIG.baseFreq + (intensity * 30), now, 0.05);
+
+            // Clash Detection
+            const accRaw = event.acceleration;
+            if (accRaw && accRaw.x !== null) {
+                const totalAcc = Math.sqrt(accRaw.x**2 + accRaw.y**2 + accRaw.z**2);
+                if (totalAcc > CONFIG.clashThreshold) {
+                    triggerClash();
+                }
+            }
+        }
+
+        function triggerClash() {
+            if (!window.lastClash || Date.now() - window.lastClash > 300) {
+                window.lastClash = Date.now();
+                document.body.classList.add('clash-flash');
+                setTimeout(() => document.body.classList.remove('clash-flash'), 100);
+                // Hier könnte man noch einen kurzen Noise-Burst abspielen
+            }
+        }
+
+        document.getElementById('activate-btn').addEventListener('click', async () => {
+            if (!isRunning) {
+                // Audio Context starten (Firefox/Chrome Requirement)
+                if (!audioCtx) initAudio();
+                if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+                // Permissions (iOS)
+                if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission !== 'granted') return;
+                }
+
+                window.addEventListener('devicemotion', handleMotion, true);
+                document.getElementById('ui-layer').classList.add('hidden');
+                document.getElementById('saber-container').classList.add('active');
+                isRunning = true;
+            }
         });
 
-        // Ausschalten beim Tippen auf den Schirm (außer Startbutton)
+        // Ausschalten durch Tippen auf das Schwert
         document.body.addEventListener('click', (e) => {
-            if (isRunning && e.target.id !== 'start-btn') {
+            if (isRunning && e.target.id !== 'activate-btn') {
                 isRunning = false;
                 window.removeEventListener('devicemotion', handleMotion);
-                ui.classList.remove('hidden');
-                container.classList.remove('active');
-                if (audioCtx) {
-                    masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2);
-                    setTimeout(() => audioCtx.close(), 300);
-                }
+                document.getElementById('ui-layer').classList.remove('hidden');
+                document.getElementById('saber-container').classList.remove('active');
+                if (audioCtx) audioCtx.close().then(() => audioCtx = null);
             }
         });
     </script>
 </body>
 </html>
-
