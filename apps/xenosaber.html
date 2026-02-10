@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Universal XenoSaber</title>
+    <style>
+        :root {
+            --saber-color: #0088ff;
+            --saber-glow: rgba(0, 136, 255, 0.7);
+        }
+
+        body {
+            background-color: #000;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #ui {
+            position: absolute;
+            z-index: 10;
+            text-align: center;
+            background: radial-gradient(circle, rgba(20,20,20,0.9) 0%, rgba(0,0,0,1) 100%);
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.5s ease;
+        }
+
+        .hidden { opacity: 0; pointer-events: none; }
+
+        #ignite-btn {
+            background: transparent;
+            color: #fff;
+            border: 2px solid var(--saber-color);
+            padding: 20px 60px;
+            font-size: 1.8rem;
+            border-radius: 50px;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+            box-shadow: 0 0 20px var(--saber-glow);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #ignite-btn:active { transform: scale(0.9); box-shadow: 0 0 40px var(--saber-color); }
+
+        #blade-container {
+            height: 100%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            padding-bottom: 5vh;
+        }
+
+        #blade {
+            width: 28px;
+            height: 0;
+            background: #fff;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 0 10px #fff, 0 0 30px var(--saber-color), 0 0 70px var(--saber-color);
+            transition: height 0.3s cubic-bezier(0.1, 0.8, 0.2, 1.2);
+            z-index: 1;
+        }
+
+        .active #blade { height: 75vh; }
+
+        #hilt {
+            width: 55px;
+            height: 240px;
+            background: linear-gradient(90deg, #111, #444 50%, #111);
+            border-radius: 4px;
+            border-top: 5px solid #000;
+            z-index: 2;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+
+        #status-bar {
+            position: absolute;
+            bottom: 10px;
+            font-size: 10px;
+            color: #333;
+            font-family: monospace;
+        }
+
+        /* Flash Effekt */
+        .flash { background-color: #fff !important; }
+    </style>
+</head>
+<body>
+
+    <div id="status-bar">Sensoren: Bereit</div>
+
+    <div id="ui">
+        <h1 style="color:var(--saber-color); text-shadow: 0 0 10px var(--saber-color);">XENO SABER</h1>
+        <p style="color:#555; margin-bottom:40px;">Bewege dein Handy für Sound & Clash</p>
+        <button id="ignite-btn">Zünden</button>
+    </div>
+
+    <div id="blade-container">
+        <div id="blade"></div>
+        <div id="hilt"></div>
+    </div>
+
+    <script>
+        const CONFIG = {
+            baseFreq: 48,
+            swingSensitivity: 0.12,
+            clashThreshold: 22,
+            lowPassFreq: 0.15
+        };
+
+        let audioCtx, masterGain, compressor;
+        let humOsc, humModulator, humModGain;
+        let swingOsc, swingGain, swingFilter;
+        let isRunning = false;
+        
+        let lastAcc = { x: 0, y: 0, z: 0 };
+        let smoothedIntensity = 0;
+        let lastClash = 0;
+
+        const btn = document.getElementById('ignite-btn');
+        const ui = document.getElementById('ui');
+        const bladeContainer = document.getElementById('blade-container');
+        const status = document.getElementById('status-bar');
+
+        function setupAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Dynamics Compressor für fetten Sound ohne Clipping
+            compressor = audioCtx.createDynamicsCompressor();
+            compressor.threshold.setValueAtTime(-20, audioCtx.currentTime);
+            compressor.connect(audioCtx.destination);
+
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0; // Startet bei 0 für Fade-In
+            masterGain.connect(compressor);
+
+            // --- IDLE HUM ENGINE (FM Synthesis) ---
+            humOsc = audioCtx.createOscillator();
+            humOsc.type = 'sawtooth';
+            humOsc.frequency.value = CONFIG.baseFreq;
+
+            // Modulator für das "Elektrische Vibrieren"
+            humModulator = audioCtx.createOscillator();
+            humModulator.type = 'sine';
+            humModulator.frequency.value = 12; // 12Hz Vibration
+            humModGain = audioCtx.createGain();
+            humModGain.gain.value = 5; // Stärke der Vibration
+
+            humModulator.connect(humModGain);
+            humModGain.connect(humOsc.frequency); // Moduliert die Frequenz des Haupt-Brummens
+
+            const humFilter = audioCtx.createBiquadFilter();
+            humFilter.type = 'lowpass';
+            humFilter.frequency.value = 180;
+
+            humOsc.connect(humFilter);
+            humFilter.connect(masterGain);
+            
+            humOsc.start();
+            humModulator.start();
+
+            // --- SWING ENGINE ---
+            swingOsc = audioCtx.createOscillator();
+            swingOsc.type = 'sawtooth';
+            swingOsc.frequency.value = CONFIG.baseFreq;
+
+            swingFilter = audioCtx.createBiquadFilter();
+            swingFilter.type = 'lowpass';
+            swingFilter.frequency.value = 120;
+
+            swingGain = audioCtx.createGain();
+            swingGain.gain.value = 0;
+
+            swingOsc.connect(swingFilter).connect(swingGain).connect(masterGain);
+            swingOsc.start();
+
+            // Power On Sound
+            masterGain.gain.setTargetAtTime(0.7, audioCtx.currentTime, 0.2);
+        }
+
+        function triggerClash() {
+            const now = Date.now();
+            if (now - lastClash < 350) return;
+            lastClash = now;
+
+            const audioNow = audioCtx.currentTime;
+            
+            // Noise burst
+            const bufferSize = audioCtx.sampleRate * 0.12;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            const ng = audioCtx.createGain();
+            ng.gain.setValueAtTime(1.2, audioNow);
+            ng.gain.exponentialRampToValueAtTime(0.01, audioNow + 0.1);
+            noise.connect(ng).connect(compressor);
+            noise.start();
+
+            // High Pitch Spark
+            const spark = audioCtx.createOscillator();
+            spark.type = 'square';
+            spark.frequency.setValueAtTime(1200, audioNow);
+            spark.frequency.exponentialRampToValueAtTime(400, audioNow + 0.1);
+            const sg = audioCtx.createGain();
+            sg.gain.setValueAtTime(0.3, audioNow);
+            sg.gain.exponentialRampToValueAtTime(0.01, audioNow + 0.1);
+            spark.connect(sg).connect(compressor);
+            spark.start();
+            spark.stop(audioNow + 0.15);
+
+            // Visuell
+            document.body.classList.add('flash');
+            setTimeout(() => document.body.classList.remove('flash'), 50);
+        }
+
+        function handleMotion(event) {
+            if (!isRunning) return;
+
+            let moveSpeed = 0;
+            const now = audioCtx.currentTime;
+
+            // --- SENSOR KASKADE ---
+            
+            // 1. Gyroskop (Bestes Ergebnis)
+            if (event.rotationRate && event.rotationRate.alpha !== null) {
+                const r = event.rotationRate;
+                moveSpeed = (Math.abs(r.alpha) + Math.abs(r.beta) + Math.abs(r.gamma)) / 30;
+                status.innerText = "Mode: Gyro";
+            } 
+            // 2. Beschleunigungssensor (Fallback)
+            else {
+                const acc = event.acceleration || event.accelerationIncludingGravity;
+                if (acc) {
+                    const dx = acc.x - lastAcc.x;
+                    const dy = acc.y - lastAcc.y;
+                    const dz = acc.z - lastAcc.z;
+                    moveSpeed = Math.sqrt(dx*dx + dy*dy + dz*dz) * 1.5;
+                    
+                    // Clash Detection
+                    const impact = Math.sqrt(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z);
+                    if (impact > CONFIG.clashThreshold) triggerClash();
+
+                    lastAcc = { x: acc.x, y: acc.y, z: acc.z };
+                    status.innerText = "Mode: Accel";
+                }
+            }
+
+            // --- SMOOTHING & SOUND ---
+            smoothedIntensity = (smoothedIntensity * (1 - CONFIG.lowPassFreq)) + (moveSpeed * CONFIG.lowPassFreq);
+            const intensity = Math.min(smoothedIntensity, 4);
+
+            // Dynamische Anpassung
+            swingGain.gain.setTargetAtTime(intensity * 0.5, now, 0.08);
+            swingFilter.frequency.setTargetAtTime(120 + (intensity * 1200), now, 0.1);
+            swingOsc.frequency.setTargetAtTime(CONFIG.baseFreq + (intensity * 45), now, 0.1);
+            
+            // Idle Hum Modulation verstärken bei Bewegung
+            humModGain.gain.setTargetAtTime(5 + (intensity * 15), now, 0.1);
+        }
+
+        btn.addEventListener('click', async () => {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                const permission = await DeviceMotionEvent.requestPermission();
+                if (permission !== 'granted') return;
+            }
+
+            setupAudio();
+            isRunning = true;
+            ui.classList.add('hidden');
+            bladeContainer.classList.add('active');
+            window.addEventListener('devicemotion', handleMotion, true);
+        });
+
+        document.body.addEventListener('click', (e) => {
+            if (isRunning && e.target.id !== 'ignite-btn') {
+                isRunning = false;
+                masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.15);
+                setTimeout(() => {
+                    audioCtx.close();
+                    audioCtx = null;
+                }, 200);
+                ui.classList.remove('hidden');
+                bladeContainer.classList.remove('active');
+                window.removeEventListener('devicemotion', handleMotion);
+            }
+        });
+    </script>
+</body>
+</html>
+
+
