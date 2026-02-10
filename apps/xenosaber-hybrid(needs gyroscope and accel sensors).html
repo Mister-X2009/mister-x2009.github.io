@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hybrid XenoSaber - Translation & Rotation</title>
+    <style>
+        :root {
+            --saber-color: #00ff44; /* Klassisches Grün */
+            --saber-glow: rgba(0, 255, 68, 0.7);
+        }
+
+        body {
+            background-color: #020202;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+            touch-action: none;
+        }
+
+        #ui {
+            position: absolute;
+            z-index: 20;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.9);
+            transition: opacity 0.4s;
+        }
+
+        .hidden { opacity: 0; pointer-events: none; }
+
+        #ignite-btn {
+            background: transparent;
+            color: #fff;
+            border: 3px solid var(--saber-color);
+            padding: 25px 50px;
+            font-size: 1.5rem;
+            border-radius: 50px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            box-shadow: 0 0 20px var(--saber-glow);
+            cursor: pointer;
+        }
+
+        #blade-container {
+            height: 100%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            padding-bottom: 5vh;
+            perspective: 1000px;
+        }
+
+        #blade {
+            width: 24px;
+            height: 0;
+            background: #fff;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 0 15px #fff, 0 0 35px var(--saber-color), 0 0 80px var(--saber-color);
+            transition: height 0.35s cubic-bezier(0.15, 0.85, 0.3, 1.1);
+        }
+
+        .active #blade { height: 70vh; }
+
+        #hilt {
+            width: 50px;
+            height: 220px;
+            background: linear-gradient(90deg, #111, #555 50%, #111);
+            border-radius: 4px;
+            border-top: 6px solid #000;
+            z-index: 5;
+        }
+
+        #debug {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 10px;
+            color: #333;
+            font-family: monospace;
+            pointer-events: none;
+        }
+
+        .clash-flash { background-color: #fff !important; }
+    </style>
+</head>
+<body>
+
+    <div id="debug">Sensoren: Bereit</div>
+
+    <div id="ui">
+        <h1 style="color:var(--saber-color); text-shadow: 0 0 15px var(--saber-color);">HYBRID SABER</h1>
+        <p style="color:#666; margin-bottom:30px;">Nutzt Gyroskop + Beschleunigung</p>
+        <button id="ignite-btn">AKTIVIEREN</button>
+    </div>
+
+    <div id="blade-container">
+        <div id="blade"></div>
+        <div id="hilt"></div>
+    </div>
+
+    <script>
+        // --- AUDIO ENGINE ---
+        let audioCtx, masterGain, compressor;
+        let humOsc, humModulator, humModGain;
+        let swingOsc, swingFilter, swingGain;
+        let isRunning = false;
+
+        // --- SENSOR STATE ---
+        let lastAcc = { x: 0, y: 0, z: 0 };
+        let smoothedRotation = 0;
+        let smoothedTranslation = 0;
+        let lastClash = 0;
+
+        const ui = document.getElementById('ui');
+        const debug = document.getElementById('debug');
+        const bladeContainer = document.getElementById('blade-container');
+
+        function setupAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            compressor = audioCtx.createDynamicsCompressor();
+            compressor.connect(audioCtx.destination);
+
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0; 
+            masterGain.connect(compressor);
+
+            // Brummton mit Frequenzmodulation (FM)
+            humOsc = audioCtx.createOscillator();
+            humOsc.type = 'sawtooth';
+            humOsc.frequency.value = 50;
+
+            humModulator = audioCtx.createOscillator();
+            humModulator.frequency.value = 10; 
+            humModGain = audioCtx.createGain();
+            humModGain.gain.value = 4; 
+
+            humModulator.connect(humModGain).connect(humOsc.frequency);
+            
+            const humLowpass = audioCtx.createBiquadFilter();
+            humLowpass.frequency.value = 160;
+            
+            humOsc.connect(humLowpass).connect(masterGain);
+            humOsc.start();
+            humModulator.start();
+
+            // Swing Synth (Das Fauchen)
+            swingOsc = audioCtx.createOscillator();
+            swingOsc.type = 'sawtooth';
+            swingFilter = audioCtx.createBiquadFilter();
+            swingFilter.type = 'lowpass';
+            swingGain = audioCtx.createGain();
+            swingGain.gain.value = 0;
+
+            swingOsc.connect(swingFilter).connect(swingGain).connect(masterGain);
+            swingOsc.start();
+
+            // Fade in
+            masterGain.gain.setTargetAtTime(0.7, audioCtx.currentTime, 0.3);
+        }
+
+        function triggerClash() {
+            const now = Date.now();
+            if (now - lastClash < 400) return;
+            lastClash = now;
+
+            const t = audioCtx.currentTime;
+            
+            // Noise Burst
+            const noise = audioCtx.createBufferSource();
+            const bufSize = audioCtx.sampleRate * 0.15;
+            const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+            const data = buf.getChannelData(0);
+            for(let i=0; i<bufSize; i++) data[i] = Math.random() * 2 - 1;
+            noise.buffer = buf;
+
+            const g = audioCtx.createGain();
+            g.gain.setValueAtTime(1.5, t);
+            g.gain.exponentialRampToValueAtTime(0.01, t + 0.12);
+            
+            noise.connect(g).connect(compressor);
+            noise.start();
+
+            // Flash
+            document.body.classList.add('clash-flash');
+            setTimeout(() => document.body.classList.remove('clash-flash'), 60);
+        }
+
+        function handleMotion(event) {
+            if (!isRunning || !audioCtx) return;
+
+            // 1. ROTATION (Aus dem Handgelenk)
+            const r = event.rotationRate;
+            let rotVal = 0;
+            if (r && r.alpha !== null) {
+                rotVal = (Math.abs(r.alpha) + Math.abs(r.beta) + Math.abs(r.gamma)) / 100;
+            }
+
+            // 2. TRANSLATION (Durch den Raum - z.B. im Auto oder Arm-Schwung)
+            const acc = event.acceleration || event.accelerationIncludingGravity;
+            let transVal = 0;
+            if (acc) {
+                const dx = acc.x - lastAcc.x;
+                const dy = acc.y - lastAcc.y;
+                const dz = acc.z - lastAcc.z;
+                // Wir nehmen die Änderung der Beschleunigung (Jerk/Ruck)
+                transVal = Math.sqrt(dx*dx + dy*dy + dz*dz) / 5;
+
+                // Clash Detection auf Basis roher Wucht
+                const force = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
+                if (force > 28) triggerClash();
+
+                lastAcc = { x: acc.x, y: acc.y, z: acc.z };
+            }
+
+            // 3. MIXING & SMOOTHING
+            // Wir gewichten beide Werte
+            smoothedRotation = (smoothedRotation * 0.85) + (rotVal * 0.15);
+            smoothedTranslation = (smoothedTranslation * 0.8) + (transVal * 0.2);
+            
+            // Die Gesamtintensität ist die Summe aus beidem
+            const totalIntensity = Math.min(smoothedRotation + smoothedTranslation, 5);
+
+            updateAudio(totalIntensity);
+            
+            debug.innerText = `ROT: ${smoothedRotation.toFixed(2)} | TRANS: ${smoothedTranslation.toFixed(2)}`;
+        }
+
+        function updateAudio(intensity) {
+            const now = audioCtx.currentTime;
+            
+            // Swing Volume
+            swingGain.gain.setTargetAtTime(Math.min(intensity * 0.4, 0.9), now, 0.1);
+            
+            // Frequenz-Anstieg (Pitch Up)
+            swingOsc.frequency.setTargetAtTime(50 + (intensity * 40), now, 0.12);
+            
+            // Filter öffnet sich (Vom dumpfen Brummen zum aggressiven Fauchen)
+            swingFilter.frequency.setTargetAtTime(140 + (intensity * 1100), now, 0.12);
+
+            // Das "Vibrieren" des Grundtones nimmt bei Bewegung zu
+            humModGain.gain.setTargetAtTime(4 + (intensity * 15), now, 0.15);
+        }
+
+        document.getElementById('ignite-btn').addEventListener('click', async () => {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                const p = await DeviceMotionEvent.requestPermission();
+                if (p !== 'granted') return;
+            }
+
+            setupAudio();
+            isRunning = true;
+            ui.classList.add('hidden');
+            bladeContainer.classList.add('active');
+            window.addEventListener('devicemotion', handleMotion, true);
+        });
+
+        document.body.addEventListener('click', (e) => {
+            if (isRunning && e.target.id !== 'ignite-btn') {
+                isRunning = false;
+                masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2);
+                setTimeout(() => {
+                    if(audioCtx) audioCtx.close();
+                }, 300);
+                ui.classList.remove('hidden');
+                bladeContainer.classList.remove('active');
+                window.removeEventListener('devicemotion', handleMotion);
+            }
+        });
+    </script>
+</body>
+</html>
+
+
