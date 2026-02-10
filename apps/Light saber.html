@@ -3,22 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Web Saber - Smooth Swing</title>
+    <title>Proffie Web Saber</title>
     <style>
+        :root {
+            --blade-color: #00ffcc; /* Cyan als Standard */
+            --blade-core: #ffffff;
+            --hilt-color: #444;
+        }
+
         body {
-            background-color: #111;
+            background-color: #050505;
             color: #eee;
-            font-family: 'Segoe UI', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-            margin: 0;
-            overflow: hidden;
-            transition: background-color 0.1s;
+            touch-action: none; /* Verhindert Zoom/Scroll */
+            transition: background-color 0.1s ease-out;
         }
 
+        /* Das UI Overlay */
+        #ui-layer {
+            position: absolute;
+            z-index: 100;
+            text-align: center;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.7);
+            transition: opacity 0.5s;
+        }
+
+        #ui-layer.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        button {
+            background: transparent;
+            color: var(--blade-color);
+            border: 2px solid var(--blade-color);
+            padding: 20px 50px;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 15px var(--blade-color);
+            transition: all 0.2s;
+        }
+
+        button:active {
+            background: var(--blade-color);
+            color: #000;
+            transform: scale(0.95);
+        }
+
+        /* Die Schwert-Darstellung */
         #saber-container {
             position: relative;
             width: 100%;
@@ -26,236 +74,375 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-        }
-
-        button {
-            background: transparent;
-            color: #0ff;
-            border: 2px solid #0ff;
-            padding: 20px 40px;
-            font-size: 24px;
-            border-radius: 50px;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            box-shadow: 0 0 15px #0ff;
-            transition: all 0.3s ease;
-            z-index: 10;
-        }
-
-        button:active {
-            background: #0ff;
-            color: #000;
+            justify-content: flex-end;
+            padding-bottom: 50px;
+            transform-style: preserve-3d;
+            perspective: 1000px;
         }
 
         #blade {
-            position: absolute;
-            width: 20px;
-            height: 0%;
-            background: white;
-            box-shadow: 0 0 20px 5px #0ff, 0 0 40px 10px #0ff;
-            border-radius: 10px;
-            transition: height 0.3s ease-out;
-            bottom: 50%;
+            width: 24px;
+            height: 0%; /* Startet eingefahren */
+            background: var(--blade-core);
+            border-radius: 20px 20px 0 0;
+            box-shadow: 
+                0 0 10px 2px var(--blade-color),
+                0 0 20px 5px var(--blade-color),
+                0 0 40px 10px var(--blade-color),
+                0 0 80px 20px var(--blade-color);
+            transition: height 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
+            position: relative;
+            z-index: 2;
         }
 
+        #hilt {
+            width: 60px;
+            height: 250px;
+            background: linear-gradient(to right, #222 0%, #666 50%, #222 100%);
+            border-radius: 5px;
+            position: relative;
+            z-index: 5;
+            box-shadow: 0 0 10px rgba(0,0,0,0.8);
+            border-top: 5px solid #000;
+        }
+
+        /* Hilt Details */
+        #hilt:after {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 5px;
+            right: 5px;
+            height: 5px;
+            background: #000;
+            border-radius: 2px;
+            box-shadow: 0 10px 0 #000, 0 20px 0 #000; /* Griff-Ringe */
+        }
+        
+        #button-area {
+            position: absolute;
+            top: 100px;
+            left: 15px;
+            width: 30px;
+            height: 30px;
+            background: radial-gradient(circle, #f00 20%, #400 60%);
+            border-radius: 50%;
+            border: 2px solid #222;
+            cursor: pointer;
+            box-shadow: 0 0 5px #f00;
+            z-index: 10;
+        }
+
+        /* Aktiviert */
+        .active #blade {
+            height: 70%; /* Ausgefahren */
+        }
+
+        .active #ui-layer {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Clash-Effekt */
+        .clash {
+            background-color: var(--blade-core);
+            animation: clash-anim 0.2s linear;
+        }
+
+        @keyframes clash-anim {
+            0% { background: var(--blade-core); }
+            100% { background: #050505; }
+        }
+
+        .error { color: #f44; font-size: 0.8rem; margin-top: 10px; text-align: center; }
+        
+        /* Debug Info (unten, klein) */
         #debug {
             position: absolute;
-            bottom: 20px;
-            font-size: 12px;
+            bottom: 5px;
+            left: 5px;
+            font-size: 10px;
             color: #555;
-            text-align: center;
-        }
-
-        .active-blade {
-            height: 80% !important;
+            font-family: monospace;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
 
+    <!-- UI Overlay (Start-Button) -->
+    <div id="ui-layer">
+        <h1>Proffie Web Saber</h1>
+        <p style="font-size: 0.9rem; margin-bottom: 20px; color: #888;">
+            Für Sound-Effekte: Lautstärke hoch!<br>
+            Nutze HTTPS für iPhone-Sensoren.
+        </p>
+        <button id="activate-btn">Zünden</button>
+        <div id="debug"></div>
+    </div>
+
+    <!-- Das eigentliche Schwert -->
     <div id="saber-container">
         <div id="blade"></div>
-        <button id="power-btn">Einschalten</button>
-        <div id="debug">Bereit. (Sensoren benötigen HTTPS)</div>
+        <div id="hilt">
+            <div id="button-area"></div>
+        </div>
     </div>
 
     <script>
-        // --- KONFIGURATION ---
-        const BASE_FREQ = 50; // Tiefer Brummton (Hz)
-        const SWING_SENSITIVITY = 0.05; // Wie empfindlich reagiert es?
-        const MAX_SWING_VOL = 0.8; // Maximale Lautstärke beim Schwingen
+        // --- KONFIGURATION DES SOUNDS ---
+        const CONFIG = {
+            baseFreq: 50, // Grundfrequenz des Summens (Hz)
+            swingSens: 0.05, // Empfindlichkeit für Swings
+            maxSwingVol: 0.8, // Lautstärke bei voller Bewegung
+            clashThreshold: 15, // Schwellenwert für Erschütterung (m/s²)
+            colors: ['#00ffcc', '#ff0000', '#00ff00', '#0000ff', '#ff00ff', '#ffffff'] // Klick auf Griff wechselt Farbe
+        };
 
-        let audioCtx;
-        let masterGain;
-        let humOsc1, humOsc2, swingOsc;
-        let humGain, swingGain;
+        let currentColorIndex = 0;
         let isRunning = false;
+        let audioCtx, masterGain, compressor;
+        let humOsc1, humOsc2, swingOsc, swingFilter;
+        let humGain, swingGain;
         
-        const btn = document.getElementById('power-btn');
+        // DOM Elemente
+        const uiLayer = document.getElementById('ui-layer');
         const blade = document.getElementById('blade');
+        const hiltBtn = document.getElementById('button-area');
+        const activateBtn = document.getElementById('activate-btn');
         const debug = document.getElementById('debug');
         const body = document.body;
 
-        // Sound initialisieren
-        function initAudio() {
+        // --- AUDIO ENGINE ---
+        // Erzeugt den Sound komplett synthetisch (keine MP3s!)
+        function initAudioEngine() {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             audioCtx = new AudioContext();
 
-            // Master Lautstärke (um Clipping zu vermeiden)
+            // Kompressor verhindert Übersteuern bei lauten Sounds
+            compressor = audioCtx.createDynamicsCompressor();
+            compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+            compressor.knee.setValueAtTime(30, audioCtx.currentTime);
+            compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+            compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+            compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+            compressor.connect(audioCtx.destination);
+
             masterGain = audioCtx.createGain();
-            masterGain.gain.value = 0.5;
-            masterGain.connect(audioCtx.destination);
+            masterGain.gain.value = 0.6; 
+            masterGain.connect(compressor);
 
-            // 1. Statischer Brummton (Idle Hum) - Oszillator 1
+            // Layer 1: Der tiefe Brummton (Idle Hum)
+            // Nutzt Sägezahnwelle für "elektrischen" Klang
             humOsc1 = audioCtx.createOscillator();
-            humOsc1.type = 'sawtooth'; // Sägezahn klingt "elektrisch"
-            humOsc1.frequency.value = BASE_FREQ;
+            humOsc1.type = 'sawtooth';
+            humOsc1.frequency.value = CONFIG.baseFreq;
             
-            // Filter für den Brummton (damit es dumpfer klingt)
-            const lowpass = audioCtx.createBiquadFilter();
-            lowpass.type = 'lowpass';
-            lowpass.frequency.value = 200;
-
+            // Filter macht den Sägezahn weicher
+            const humFilter = audioCtx.createBiquadFilter();
+            humFilter.type = 'lowpass';
+            humFilter.frequency.value = 180;
+            
             humGain = audioCtx.createGain();
-            humGain.gain.value = 0.1; // Leise im Stand
+            humGain.gain.value = 0.15; // Lautstärke im Stillstand
 
-            humOsc1.connect(lowpass);
-            lowpass.connect(humGain);
+            humOsc1.connect(humFilter);
+            humFilter.connect(humGain);
             humGain.connect(masterGain);
 
-            // 2. Interferenz Brummton (Idle Hum 2) - macht den Sound "lebendig"
+            // Layer 2: Interferenz (leicht verstimmt)
+            // Erzeugt das "Wabern"
             humOsc2 = audioCtx.createOscillator();
             humOsc2.type = 'sine';
-            humOsc2.frequency.value = BASE_FREQ + 2; // Leichte Dissonanz erzeugt Schwebung
+            humOsc2.frequency.value = CONFIG.baseFreq + 2; // +2Hz erzeugt Schwebung
             const humGain2 = audioCtx.createGain();
-            humGain2.gain.value = 0.3;
+            humGain2.gain.value = 0.25;
+            
             humOsc2.connect(humGain2);
             humGain2.connect(masterGain);
 
-            // 3. Schwung Sound (Swing) - Reagiert auf Bewegung
+            // Layer 3: Swing (Bewegungssound)
+            // Dieser Sound wird nur laut, wenn man bewegt
             swingOsc = audioCtx.createOscillator();
             swingOsc.type = 'sawtooth';
-            swingOsc.frequency.value = BASE_FREQ; 
-            
-            // Filter für Swing
-            const swingFilter = audioCtx.createBiquadFilter();
+            swingOsc.frequency.value = CONFIG.baseFreq; 
+
+            swingFilter = audioCtx.createBiquadFilter(); // Wichtig für den "Whoosh"
             swingFilter.type = 'lowpass';
-            swingFilter.frequency.value = 150;
+            swingFilter.frequency.value = 120; // Startet dumpf
 
             swingGain = audioCtx.createGain();
-            swingGain.gain.value = 0.0; // Stumm wenn keine Bewegung
+            swingGain.gain.value = 0.0; // Am Anfang stumm
 
             swingOsc.connect(swingFilter);
             swingFilter.connect(swingGain);
             swingGain.connect(masterGain);
 
-            // Starten
+            // Starten aller Oszillatoren
             humOsc1.start();
             humOsc2.start();
             swingOsc.start();
-            
-            // Referenzen speichern für Updates
-            window.audioNodes = {
-                swingGain: swingGain,
-                swingOsc: swingOsc,
-                swingFilter: swingFilter,
-                humGain: humGain
-            };
         }
 
-        function stopAudio() {
+        function stopAudioEngine() {
             if (audioCtx) {
-                // Ramp down volume
-                masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                // Fade out um "Knacken" zu vermeiden
+                masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2);
                 setTimeout(() => {
                     audioCtx.close();
                     audioCtx = null;
-                }, 200);
+                }, 250);
             }
         }
 
-        // Bewegung verarbeiten
+        // Clash Sound (Weißes Rauschen Burst)
+        function triggerClash() {
+            if (!audioCtx) return;
+            
+            // Visueller Effekt
+            body.classList.add('clash');
+            setTimeout(() => body.classList.remove('clash'), 100);
+
+            // Audio Effekt
+            const bufferSize = audioCtx.sampleRate * 0.5; // 0.5 Sekunden
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1; // Rauschen generieren
+            }
+
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(1, audioCtx.currentTime);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            
+            noise.connect(noiseGain);
+            noiseGain.connect(masterGain);
+            noise.start();
+        }
+
+        // --- BEWEGUNGSLOGIK ---
+        
+        // iOS 13+ Permissions
+        async function requestSensors() {
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const response = await DeviceMotionEvent.requestPermission();
+                    if (response == 'granted') {
+                        return true;
+                    } else {
+                        debug.innerText = "Fehler: Sensoren abgelehnt.";
+                        return false;
+                    }
+                } catch (e) {
+                    debug.innerText = "Fehler: HTTPS benötigt?";
+                    return false;
+                }
+            }
+            return true; // Android oder älteres iOS
+        }
+
+        // Die Hauptschleife für Bewegung
         function handleMotion(event) {
-            if (!isRunning || !window.audioNodes) return;
+            if (!isRunning || !audioCtx) return;
 
-            // Wir nutzen rotationRate (Gyroskop), nicht acceleration (Beschleunigung),
-            // da Schwerter durch Drehungen "singen".
-            const r = event.rotationRate;
-            if (!r) return;
-
-            // Gesamtdrehgeschwindigkeit berechnen (Pythagoras)
-            // Math.abs, da Richtung egal ist, nur Geschwindigkeit zählt
-            const totalRotation = Math.sqrt(r.alpha * r.alpha + r.beta * r.beta + r.gamma * r.gamma);
-
-            updateSynth(totalRotation);
-            
-            // Debug Anzeige
-            // debug.innerText = `Rotation: ${Math.round(totalRotation)}`;
-        }
-
-        // Den Sound basierend auf den Daten anpassen
-        function updateSynth(rotationSpeed) {
-            const nodes = window.audioNodes;
             const now = audioCtx.currentTime;
-
-            // Normalisieren: Wir nehmen an, 300 deg/s ist ein sehr schneller Swing
-            let intensity = Math.min(rotationSpeed * SWING_SENSITIVITY, 1.0); 
-
-            // Glättung (Smoothing), damit der Sound nicht "stottert"
-            // Wir nutzen setTargetAtTime für weiche Übergänge
             
-            // 1. Lautstärke des Swings geht hoch
-            nodes.swingGain.gain.setTargetAtTime(intensity * MAX_SWING_VOL, now, 0.05);
+            // 1. Gyroskop (Drehung) für den "Smooth Swing"
+            const r = event.rotationRate;
+            let rotationSpeed = 0;
+            if (r) {
+                // Pythagoras im 3D Raum für absolute Drehgeschwindigkeit
+                rotationSpeed = Math.sqrt(r.alpha * r.alpha + r.beta * r.beta + r.gamma * r.gamma);
+            }
 
-            // 2. Frequenz des Swings geht leicht hoch (Doppler Effekt Simulation)
-            // Von 50Hz auf bis zu 100Hz
-            nodes.swingOsc.frequency.setTargetAtTime(BASE_FREQ + (intensity * 60), now, 0.05);
+            // Normalisiere Speed (angenommen 400 deg/s ist sehr schnell)
+            let intensity = Math.min(rotationSpeed / 300, 1.0);
 
-            // 3. Filter öffnet sich (Sound wird heller/schärfer bei Bewegung)
-            nodes.swingFilter.frequency.setTargetAtTime(150 + (intensity * 800), now, 0.05);
+            // AUDIO MODULATION (Smooth Swing)
+            // Lautstärke hochfahren
+            swingGain.gain.setTargetAtTime(intensity * CONFIG.maxSwingVol, now, 0.1);
+            
+            // Filter öffnen (Sound wird heller/aggressiver)
+            // Von 120Hz bis 1200Hz
+            swingFilter.frequency.setTargetAtTime(120 + (intensity * 1000), now, 0.1);
 
-            // 4. Visueller Effekt (Blade flackert stärker)
-            blade.style.boxShadow = `0 0 ${20 + intensity * 20}px ${5 + intensity * 10}px #0ff`;
+            // Tonhöhe leicht anheben (Doppler-Effekt Simulation)
+            swingOsc.frequency.setTargetAtTime(CONFIG.baseFreq + (intensity * 40), now, 0.1);
+
+
+            // 2. Akzelerometer (Beschleunigung) für "Clash"
+            const acc = event.acceleration;
+            if (acc && acc.x) {
+                const impact = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+                if (impact > CONFIG.clashThreshold) {
+                    // Verhindere Dauer-Trigger
+                    if (!window.lastClash || Date.now() - window.lastClash > 300) {
+                        triggerClash();
+                        window.lastClash = Date.now();
+                    }
+                }
+            }
         }
 
+        // --- STEUERUNG ---
 
-        // Start Button Logik
-        btn.addEventListener('click', async () => {
+        function toggleSaber() {
             if (isRunning) {
                 // Ausschalten
                 isRunning = false;
-                btn.innerText = "Einschalten";
-                btn.style.borderColor = "#0ff";
-                btn.style.color = "#0ff";
-                blade.classList.remove('active-blade');
-                stopAudio();
+                document.getElementById('saber-container').classList.remove('active');
+                stopAudioEngine();
+                uiLayer.classList.remove('hidden');
+                uiLayer.style.pointerEvents = 'auto'; // Button wieder klickbar machen
                 window.removeEventListener('devicemotion', handleMotion);
+                activateBtn.innerText = "Zünden";
             } else {
                 // Einschalten
-                
-                // iOS 13+ Berechtigung anfordern
-                if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-                    try {
-                        const permissionState = await DeviceMotionEvent.requestPermission();
-                        if (permissionState !== 'granted') {
-                            alert('Bewegungssensoren nicht erlaubt.');
-                            return;
-                        }
-                    } catch (e) {
-                        console.error(e);
+                requestSensors().then(granted => {
+                    if (granted) {
+                        isRunning = true;
+                        uiLayer.classList.add('hidden');
+                        document.getElementById('saber-container').classList.add('active');
+                        initAudioEngine();
+                        window.addEventListener('devicemotion', handleMotion);
+                        activateBtn.innerText = "Deaktivieren"; // Fallback falls UI sichtbar bleibt
                     }
-                }
+                });
+            }
+        }
 
-                initAudio();
-                window.addEventListener('devicemotion', handleMotion);
-                
-                isRunning = true;
-                btn.innerText = "Ausschalten";
-                btn.style.borderColor = "#f00"; // Stop Knopf Farbe
-                btn.style.color = "#f00";
-                blade.classList.add('active-blade');
+        function changeColor() {
+            if (!isRunning) return; // Nur ändern wenn an
+            currentColorIndex = (currentColorIndex + 1) % CONFIG.colors.length;
+            const newColor = CONFIG.colors[currentColorIndex];
+            document.documentElement.style.setProperty('--blade-color', newColor);
+            
+            // Kleines Feedback beim Farbwechsel
+            triggerClash();
+        }
+
+        // Events
+        activateBtn.addEventListener('click', toggleSaber);
+        hiltBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Verhindert Bubbling
+            if(isRunning) {
+                // Wenn an: Farbe wechseln
+                changeColor();
+            } else {
+                // Wenn aus: Anschalten
+                toggleSaber();
+            }
+        });
+        
+        // Klick auf den Container schaltet aus (wenn an)
+        document.getElementById('saber-container').addEventListener('click', (e) => {
+            // Nur ausschalten wenn man nicht auf den Griff klickt
+            if(isRunning && e.target.id !== 'button-area') {
+                toggleSaber();
             }
         });
 
