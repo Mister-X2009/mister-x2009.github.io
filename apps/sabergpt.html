@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XenoPixel Mobile Saber Sound</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0b0f1a;
+      color: #e6edf7;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: #11182a;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    h1 {
+      font-size: 16px;
+      margin: 0;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    button, select, input, textarea {
+      font-size: 14px;
+    }
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      padding: 20px;
+      text-align: center;
+    }
+    .primary-btn {
+      padding: 14px 22px;
+      border-radius: 10px;
+      border: none;
+      background: #2e6cff;
+      color: white;
+      font-weight: 600;
+    }
+    .secondary-btn {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid #3a4664;
+      background: transparent;
+      color: #c9d4ff;
+    }
+    #status {
+      font-size: 13px;
+      opacity: 0.8;
+    }
+    #gear {
+      background: none;
+      border: none;
+      color: #c9d4ff;
+      font-size: 20px;
+    }
+    #modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    #modalContent {
+      background: #121a2b;
+      border-radius: 12px;
+      padding: 18px;
+      width: 100%;
+      max-width: 420px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    }
+    label {
+      display: block;
+      margin-top: 12px;
+      font-size: 13px;
+      opacity: 0.9;
+    }
+    input[type=range] {
+      width: 100%;
+    }
+    textarea {
+      width: 100%;
+      min-height: 80px;
+      background: #0c1322;
+      color: #d7e0ff;
+      border: 1px solid #2a3555;
+      border-radius: 6px;
+      padding: 6px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 14px;
+      gap: 10px;
+    }
+    footer {
+      padding: 10px;
+      text-align: center;
+      font-size: 12px;
+      opacity: 0.6;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>XenoPixel Mobile Saber</h1>
+    <button id="gear">⚙️</button>
+  </header>
+
+  <div id="main">
+    <button id="startBtn" class="primary-btn">Sound aktivieren</button>
+    <div id="status">Sensoren werden noch nicht verwendet.</div>
+    <button id="downloadBtn" class="secondary-btn">Webseite herunterladen</button>
+  </div>
+
+  <div id="modal">
+    <div id="modalContent">
+      <h2>Einstellungen</h2>
+
+      <label>Lautstärke</label>
+      <input type="range" id="volume" min="0" max="1" step="0.01" />
+
+      <label>Bewegungsempfindlichkeit</label>
+      <input type="range" id="sensitivity" min="0.2" max="5" step="0.1" />
+
+      <label>Grundbrummen Tonhöhe</label>
+      <input type="range" id="baseFreq" min="40" max="120" step="1" />
+
+      <label>Erweiterter Generator (JS-Ausdruck für Pitch‑Offset aus Bewegung)</label>
+      <textarea id="scriptBox">return movement * 120;</textarea>
+
+      <div class="row">
+        <button id="closeModal" class="secondary-btn">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Funktioniert am besten auf Smartphones mit Bewegungs‑ und Gyrosensor.
+  </footer>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const statusEl = document.getElementById('status');
+    const gearBtn = document.getElementById('gear');
+    const modal = document.getElementById('modal');
+    const closeModal = document.getElementById('closeModal');
+    const volumeSlider = document.getElementById('volume');
+    const sensitivitySlider = document.getElementById('sensitivity');
+    const baseFreqSlider = document.getElementById('baseFreq');
+    const scriptBox = document.getElementById('scriptBox');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    let audioCtx, masterGain, humOsc, motionGain;
+    let running = false;
+    let lastAccel = 0;
+    let movementLevel = 0;
+
+    const settings = JSON.parse(localStorage.getItem('saberSettings') || '{}');
+
+    function loadSettings() {
+      volumeSlider.value = settings.volume ?? 0.6;
+      sensitivitySlider.value = settings.sensitivity ?? 1.5;
+      baseFreqSlider.value = settings.baseFreq ?? 70;
+      scriptBox.value = settings.script ?? 'return movement * 120;';
+    }
+
+    function saveSettings() {
+      settings.volume = parseFloat(volumeSlider.value);
+      settings.sensitivity = parseFloat(sensitivitySlider.value);
+      settings.baseFreq = parseFloat(baseFreqSlider.value);
+      settings.script = scriptBox.value;
+      localStorage.setItem('saberSettings', JSON.stringify(settings));
+    }
+
+    loadSettings();
+
+    volumeSlider.oninput = sensitivitySlider.oninput = baseFreqSlider.oninput = scriptBox.onchange = saveSettings;
+
+    function initAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = settings.volume;
+      masterGain.connect(audioCtx.destination);
+
+      humOsc = audioCtx.createOscillator();
+      humOsc.type = 'sawtooth';
+
+      const humFilter = audioCtx.createBiquadFilter();
+      humFilter.type = 'lowpass';
+      humFilter.frequency.value = 800;
+
+      motionGain = audioCtx.createGain();
+      motionGain.gain.value = 0;
+
+      humOsc.connect(humFilter);
+      humFilter.connect(motionGain);
+      motionGain.connect(masterGain);
+
+      humOsc.start();
+    }
+
+    function updateSound() {
+      if (!audioCtx) return;
+
+      const movement = movementLevel * settings.sensitivity;
+      let offset = 0;
+      try {
+        const fn = new Function('movement', scriptBox.value);
+        offset = fn(movement) || 0;
+      } catch {}
+
+      humOsc.frequency.setTargetAtTime(settings.baseFreq + offset, audioCtx.currentTime, 0.05);
+      motionGain.gain.setTargetAtTime(Math.min(1, movement), audioCtx.currentTime, 0.05);
+      masterGain.gain.setTargetAtTime(settings.volume, audioCtx.currentTime, 0.05);
+
+      requestAnimationFrame(updateSound);
+    }
+
+    function handleMotion(event) {
+      let accelMag = 0;
+      if (event.accelerationIncludingGravity) {
+        const a = event.accelerationIncludingGravity;
+        accelMag = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+      }
+
+      let rotMag = 0;
+      if (event.rotationRate) {
+        const r = event.rotationRate;
+        rotMag = Math.abs(r.alpha || 0) + Math.abs(r.beta || 0) + Math.abs(r.gamma || 0);
+      }
+
+      const delta = Math.abs(accelMag - lastAccel);
+      lastAccel = accelMag;
+
+      movementLevel = 0.6 * delta + 0.4 * (rotMag / 180);
+    }
+
+    async function enableSensors() {
+      let motionOk = false;
+
+      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        const res = await DeviceMotionEvent.requestPermission();
+        motionOk = res === 'granted';
+      } else {
+        motionOk = 'DeviceMotionEvent' in window;
+      }
+
+      if (motionOk) {
+        window.addEventListener('devicemotion', handleMotion);
+        statusEl.textContent = 'Bewegungs- und Rotationsdaten aktiv.';
+      } else {
+        statusEl.textContent = 'Keine Bewegungssensoren verfügbar – nur Grundsound.';
+      }
+    }
+
+    startBtn.onclick = async () => {
+      if (running) return;
+      saveSettings();
+      initAudio();
+      await enableSensors();
+      running = true;
+      updateSound();
+      startBtn.textContent = 'Aktiv';
+    };
+
+    gearBtn.onclick = () => modal.style.display = 'flex';
+    closeModal.onclick = () => modal.style.display = 'none';
+
+    downloadBtn.onclick = () => {
+      const blob = new Blob([document.documentElement.outerHTML], { type: 'text/html' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'xenopixel-saber.html';
+      a.click();
+    };
+  </script>
+</body>
+</html>
+
