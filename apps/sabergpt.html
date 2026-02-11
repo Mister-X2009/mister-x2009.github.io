@@ -1,185 +1,185 @@
-<!DOCTYPE html><html lang="de">
+<!DOCTYPE html>
+<html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>XenoPixel Mobile Saber</title>
-  <style>
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0f1a;color:#e6edf7;display:flex;flex-direction:column;height:100vh}
-    header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#11182a;box-shadow:0 2px 6px rgba(0,0,0,.4)}
-    h1{font-size:16px;margin:0;font-weight:600}
-    #gear{background:none;border:none;color:#c9d4ff;font-size:20px}
-    #main{flex:1;display:flex;flex-direction:column;align-items:center;gap:18px;padding:18px;text-align:center}
-    .primary-btn{padding:14px 22px;border-radius:10px;border:none;background:#2e6cff;color:#fff;font-weight:600}
-    .panel{width:100%;max-width:420px;background:#121a2b;border-radius:12px;padding:14px;box-shadow:0 6px 20px rgba(0,0,0,.5)}
-    label{display:block;margin-top:10px;font-size:13px;opacity:.9;text-align:left}
-    input,select,textarea{width:100%;margin-top:4px;background:#0c1322;color:#d7e0ff;border:1px solid #2a3555;border-radius:6px;padding:6px;font-size:13px}
-    textarea{min-height:70px;font-family:monospace}
-    #status{font-size:12px;opacity:.7}
-    #modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;justify-content:center;align-items:center;padding:20px}
-    #modalContent{background:#121a2b;border-radius:12px;padding:18px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto}
-    footer{padding:8px;text-align:center;font-size:11px;opacity:.5}
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Smooth Swing Saber</title>
+<style>
+  body {
+    margin:0;
+    background:black;
+    color:white;
+    font-family:sans-serif;
+    text-align:center;
+    overflow:hidden;
+  }
+  #blade {
+    position:fixed;
+    top:50%;
+    left:50%;
+    width:20px;
+    height:60vh;
+    transform:translate(-50%,-50%);
+    background:linear-gradient(to top, #0ff, white);
+    box-shadow:0 0 40px #0ff, 0 0 80px #0ff;
+    border-radius:10px;
+  }
+  #flash {
+    position:fixed;
+    inset:0;
+    background:white;
+    opacity:0;
+    pointer-events:none;
+  }
+  button {
+    margin-top:20px;
+    padding:12px 24px;
+    font-size:18px;
+  }
+</style>
 </head>
 <body>
-<header>
-  <h1>XenoPixel Mobile Saber</h1>
-  <button id="gear">⚙️</button>
-</header><div id="main">
-  <button id="startBtn" class="primary-btn">Sound aktivieren</button>
-  <div id="status">Bereit.</div>  <div class="panel">
-    <label>Klingen‑Profil</label>
-    <select id="profileSelect">
-      <option value="jedi">Jedi (sauber)</option>
-      <option value="sith">Sith (dunkel)</option>
-      <option value="unstable">Unstable</option>
-      <option value="custom">Custom</option>
-    </select><label>Grundbrummen Minimum (Hz)</label>
-<input type="range" id="humMin" min="40" max="120" step="1">
 
-<label>Grundbrummen Maximum (Hz)</label>
-<input type="range" id="humMax" min="80" max="300" step="1">
+<h2>Smooth Swing Lightsaber</h2>
+<button id="startBtn">Aktivieren</button>
 
-<label>Maximale Lautstärke</label>
-<input type="range" id="volume" min="0" max="1" step="0.01">
+<div id="blade"></div>
+<div id="flash"></div>
 
-<label>Bewegungsempfindlichkeit</label>
-<input type="range" id="sensitivity" min="0.2" max="3" step="0.1">
+<script>
+let audioCtx;
+let humOsc1, humOsc2, swingOsc;
+let humGain, swingGain, masterGain;
+let swingFilter;
+let noiseBuffer;
 
-  </div>
-</div><div id="modal">
-  <div id="modalContent">
-    <h2>Erweiterte Einstellungen</h2>
-    <label>Soundfont laden (Clash / Hum optional)</label>
-    <input type="file" id="soundfontInput" multiple accept="audio/*"><label>Generator‑Formel (JS → Pitch‑Offset)</label>
-<textarea id="scriptBox">return movement * 80;</textarea>
+let motionActive = false;
+let lastAccel = 0;
+let smoothV = 0;
 
-<button id="closeModal">Schließen</button>
+const BASE_FREQ = 50;
+const MULTIPLIER = 2.5;
+const SWING_SMOOTHING = 0.15;
+const CLASH_THRESHOLD = 18;
 
-  </div>
-</div><footer>Optimiert für Smartphones mit Bewegungs‑ & Gyrosensor</footer><script>
-const startBtn=document.getElementById('startBtn');
-const statusEl=document.getElementById('status');
-const gearBtn=document.getElementById('gear');
-const modal=document.getElementById('modal');
-const closeModal=document.getElementById('closeModal');
-const profileSelect=document.getElementById('profileSelect');
-const humMin=document.getElementById('humMin');
-const humMax=document.getElementById('humMax');
-const volumeSlider=document.getElementById('volume');
-const sensitivitySlider=document.getElementById('sensitivity');
-const scriptBox=document.getElementById('scriptBox');
-const soundfontInput=document.getElementById('soundfontInput');
+const flash = document.getElementById("flash");
+const btn = document.getElementById("startBtn");
 
-let audioCtx, masterGain, humOsc, humGain, filterNode;
-let running=false,lastAccel=0,movementLevel=0,lastMovement=0;
-let clashBuffer=null;
+btn.addEventListener("click", async () => {
+  await initAudio();
+  await requestMotion();
+  btn.style.display = "none";
+});
 
-const settings=JSON.parse(localStorage.getItem('saberSettings')||'{}');
-function loadSettings(){
-  humMin.value=settings.humMin??60;
-  humMax.value=settings.humMax??180;
-  volumeSlider.value=settings.volume??0.7;
-  sensitivitySlider.value=settings.sensitivity??1.0;
-  scriptBox.value=settings.script??'return movement * 80;';
-  profileSelect.value=settings.profile??'jedi';
-}
-function saveSettings(){
-  settings.humMin=parseFloat(humMin.value);
-  settings.humMax=parseFloat(humMax.value);
-  settings.volume=parseFloat(volumeSlider.value);
-  settings.sensitivity=parseFloat(sensitivitySlider.value);
-  settings.script=scriptBox.value;
-  settings.profile=profileSelect.value;
-  localStorage.setItem('saberSettings',JSON.stringify(settings));
-}
-loadSettings();
-[humMin,humMax,volumeSlider,sensitivitySlider,scriptBox,profileSelect].forEach(el=>el.oninput=saveSettings);
+async function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-function applyProfileSound(){
-  if(!filterNode)return;
-  const p=settings.profile;
-  if(p==='jedi'){filterNode.type='lowpass';filterNode.frequency.value=1200;}
-  if(p==='sith'){filterNode.type='lowpass';filterNode.frequency.value=600;}
-  if(p==='unstable'){filterNode.type='bandpass';filterNode.frequency.value=900;}
-  if(p==='custom'){filterNode.type='lowpass';filterNode.frequency.value=1000;}
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.8;
+  masterGain.connect(audioCtx.destination);
+
+  // HUM LAYER
+  humOsc1 = audioCtx.createOscillator();
+  humOsc1.type = "sawtooth";
+  humOsc1.frequency.value = BASE_FREQ;
+
+  humOsc2 = audioCtx.createOscillator();
+  humOsc2.type = "sine";
+  humOsc2.frequency.value = BASE_FREQ * 2;
+
+  humGain = audioCtx.createGain();
+  humGain.gain.value = 0.7;
+
+  humOsc1.connect(humGain);
+  humOsc2.connect(humGain);
+
+  // SWING LAYER
+  swingOsc = audioCtx.createOscillator();
+  swingOsc.type = "sawtooth";
+  swingOsc.frequency.value = BASE_FREQ;
+
+  swingFilter = audioCtx.createBiquadFilter();
+  swingFilter.type = "lowpass";
+  swingFilter.frequency.value = 300;
+
+  swingGain = audioCtx.createGain();
+  swingGain.gain.value = 0.0;
+
+  swingOsc.connect(swingFilter);
+  swingFilter.connect(swingGain);
+
+  humGain.connect(masterGain);
+  swingGain.connect(masterGain);
+
+  humOsc1.start();
+  humOsc2.start();
+  swingOsc.start();
+
+  createNoiseBuffer();
 }
 
-function initAudio(){
-  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-  masterGain=audioCtx.createGain(); masterGain.connect(audioCtx.destination);
-  humOsc=audioCtx.createOscillator(); humOsc.type='sawtooth';
-  humGain=audioCtx.createGain(); humGain.gain.value=0.4;
-  filterNode=audioCtx.createBiquadFilter();
-  humOsc.connect(filterNode); filterNode.connect(humGain); humGain.connect(masterGain);
-  humOsc.start();
-  applyProfileSound();
+function createNoiseBuffer() {
+  const bufferSize = audioCtx.sampleRate * 0.2;
+  noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
 }
 
-function playClash(){
-  if(!audioCtx)return;
-  const dur=.25;
-  const noise=audioCtx.createBufferSource();
-  const buffer=audioCtx.createBuffer(1,audioCtx.sampleRate*dur,audioCtx.sampleRate);
-  const data=buffer.getChannelData(0);
-  for(let i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*Math.exp(-i/data.length*6);
-  noise.buffer=buffer;
-  const gain=audioCtx.createGain(); gain.gain.value=.7;
+function playClash() {
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer;
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(1, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+
   noise.connect(gain).connect(masterGain);
   noise.start();
+
+  flash.style.opacity = 1;
+  setTimeout(() => flash.style.opacity = 0, 50);
 }
 
-function updateSound(){
-  if(!audioCtx)return;
-  const movement=movementLevel*settings.sensitivity;
-  let offset=0; try{offset=new Function('movement',scriptBox.value)(movement)||0;}catch{}
-  const base=settings.humMin+(settings.humMax-settings.humMin)*.3;
-  humOsc.frequency.setTargetAtTime(base+offset,audioCtx.currentTime,.05);
-  humGain.gain.setTargetAtTime(.3+movement,audioCtx.currentTime,.05);
-  masterGain.gain.setTargetAtTime(settings.volume,audioCtx.currentTime,.05);
-
-  if(lastMovement>1.2 && movement<0.2) playClash();
-  lastMovement=movement;
-
-  if(settings.profile==='unstable') humOsc.detune.setTargetAtTime((Math.random()-0.5)*40,audioCtx.currentTime,.1);
-  requestAnimationFrame(updateSound);
+async function requestMotion() {
+  if (typeof DeviceMotionEvent.requestPermission === "function") {
+    const response = await DeviceMotionEvent.requestPermission();
+    if (response !== "granted") return;
+  }
+  window.addEventListener("devicemotion", handleMotion);
+  motionActive = true;
 }
 
-function handleMotion(e){
-  let accel=0,rot=0;
-  if(e.accelerationIncludingGravity){const a=e.accelerationIncludingGravity; accel=Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z);}  
-  if(e.rotationRate){const r=e.rotationRate; rot=Math.abs(r.alpha||0)+Math.abs(r.beta||0)+Math.abs(r.gamma||0);}  
-  const delta=Math.abs(accel-lastAccel); lastAccel=accel;
-  movementLevel=0.6*movementLevel+0.4*(0.6*delta+0.4*(rot/180));
+function handleMotion(e) {
+  if (!motionActive) return;
+
+  const rot = e.rotationRate;
+  if (!rot) return;
+
+  const vRaw = Math.sqrt(rot.alpha**2 + rot.beta**2 + rot.gamma**2);
+  smoothV += (vRaw - smoothV) * SWING_SMOOTHING;
+
+  const freq = BASE_FREQ + smoothV * MULTIPLIER;
+  humOsc1.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.02);
+  humOsc2.frequency.setTargetAtTime(freq * 2, audioCtx.currentTime, 0.02);
+  swingOsc.frequency.setTargetAtTime(freq * 1.5, audioCtx.currentTime, 0.02);
+
+  const swingAmount = Math.min(smoothV / 150, 1);
+  humGain.gain.setTargetAtTime(1 - swingAmount, audioCtx.currentTime, 0.05);
+  swingGain.gain.setTargetAtTime(swingAmount, audioCtx.currentTime, 0.05);
+
+  swingFilter.frequency.setTargetAtTime(300 + swingAmount * 3000, audioCtx.currentTime, 0.05);
+
+  // Clash detection
+  const acc = e.accelerationIncludingGravity;
+  if (acc) {
+    const aMag = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
+    const deltaA = Math.abs(aMag - lastAccel);
+    if (deltaA > CLASH_THRESHOLD) playClash();
+    lastAccel = aMag;
+  }
 }
-
-async function enableSensors(){
-  let ok=false;
-  if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
-    ok=(await DeviceMotionEvent.requestPermission())==='granted';
-  } else ok='DeviceMotionEvent' in window;
-  if(ok){window.addEventListener('devicemotion',handleMotion);statusEl.textContent='Sensoren aktiv';}
-  else statusEl.textContent='Keine Sensoren – nur Grundbrummen';
-}
-
-startBtn.onclick=async()=>{
-  if(running)return;
-  saveSettings();
-  initAudio();
-  await enableSensors();
-  running=true;
-  updateSound();
-  startBtn.textContent='Aktiv';
-};
-
-profileSelect.onchange=()=>{saveSettings();applyProfileSound();};
-gearBtn.onclick=()=>modal.style.display='flex';
-closeModal.onclick=()=>modal.style.display='none';
-
-soundfontInput.onchange=async e=>{
-  const file=e.target.files[0];
-  if(!file||!audioCtx)return;
-  const arr=await file.arrayBuffer();
-  clashBuffer=await audioCtx.decodeAudioData(arr);
-};
-</script></body>
+</script>
+</body>
 </html>
